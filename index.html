@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expenditure</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --bg-subtle: #131316;
+      --glass: rgba(255, 255, 255, 0.03);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-hover: rgba(255, 255, 255, 0.06);
+      --accent-amber: #f59e0b;
+      --accent-teal: #14b8a6;
+      --danger: #f87171;
+      --success: #34d399;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --font-display: 'Syne', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 16px;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.5;
+      background-image: 
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(245, 158, 11, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(20, 184, 166, 0.04) 0%, transparent 40%);
+    }
+
+    /* Header */
+    .header {
+      padding: 24px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.5rem;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .date {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    /* Main Layout */
+    main {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 20px 120px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* Balance Card */
+    .balance-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 40px 28px;
+      backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .balance-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 30% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .balance-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .balance-amount {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 10vw, 4rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .balance-amount.positive {
+      color: var(--success);
+    }
+
+    .balance-amount.negative {
+      color: var(--danger);
+    }
+
+    .balance-amount.zero {
+      color: var(--text-secondary);
+    }
+
+    /* Health Indicator */
+    .health-section {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(20px);
+    }
+
+    .health-ring {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      flex-shrink: 0;
+    }
+
+    .health-ring svg {
+      transform: rotate(-90deg);
+      width: 80px;
+      height: 80px;
+    }
+
+    .health-ring circle {
+      fill: none;
+      stroke-width: 6;
+      stroke-linecap: round;
+    }
+
+    .health-ring .bg {
+      stroke: var(--glass-border);
+    }
+
+    .health-ring .progress {
+      stroke: var(--danger);
+      transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease;
+    }
+
+    .health-ring .progress.good {
+      stroke: var(--accent-amber);
+    }
+
+    .health-ring .progress.great {
+      stroke: var(--success);
+    }
+
+    .health-percent {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+
+    .health-info h3 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1.125rem;
+      margin-bottom: 4px;
+    }
+
+    .health-status {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    /* Income Summary */
+    .section {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(20px);
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-primary);
+    }
+
+    .section-total {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--success);
+    }
+
+    .income-list, .expense-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      background: var(--bg-subtle);
+      border-radius: 12px;
+      border: 1px solid transparent;
+      transition: border-color 0.3s ease;
+    }
+
+    .item:hover {
+      border-color: var(--glass-border);
+    }
+
+    .item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .item-name {
+      font-size: 0.9375rem;
+      font-weight: 500;
+    }
+
+    .item-date {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .item-amount {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.9375rem;
+    }
+
+    .item-amount.income {
+      color: var(--success);
+    }
+
+    .item-amount.expense {
+      color: var(--danger);
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      transition: color 0.2s, background 0.2s;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .delete-btn:hover {
+      color: var(--danger);
+      background: rgba(248, 113, 113, 0.1);
+    }
+
+    .category-tag {
+      font-size: 0.6875rem;
+      padding: 4px 10px;
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--danger);
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Empty State */
+    .empty {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    /* FABs */
+    .fab-container {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      z-index: 100;
+    }
+
+    .fab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 24px;
+      border: 1px solid var(--glass-border);
+      border-radius: 50px;
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      color: var(--text-primary);
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .fab:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .fab.income {
+      border-color: rgba(52, 211, 153, 0.3);
+    }
+
+    .fab.income:hover {
+      background: rgba(52, 211, 153, 0.1);
+      border-color: rgba(52, 211, 153, 0.5);
+    }
+
+    .fab.expense {
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+
+    .fab.expense:hover {
+      background: rgba(248, 113, 113, 0.1);
+      border-color: rgba(248, 113, 113, 0.5);
+    }
+
+    .fab svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: var(--bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 32px;
+      width: 100%;
+      max-width: 400px;
+      transform: scale(0.95) translateY(20px);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1) translateY(0);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .modal-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.375rem;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 8px;
+      font-size: 1.25rem;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+
+    .modal-close:hover {
+      color: var(--text-primary);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-amber);
+    }
+
+    .form-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .modal-submit {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+
+    .modal-submit.income {
+      background: var(--success);
+      color: #0d0d0f;
+    }
+
+    .modal-submit.income:hover {
+      background: #4ade80;
+    }
+
+    .modal-submit.expense {
+      background: var(--danger);
+      color: #0d0d0f;
+    }
+
+    .modal-submit.expense:hover {
+      background: #fca5a5;
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 100px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 1100;
+    }
+
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: var(--bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      backdrop-filter: blur(20px);
+      font-size: 0.875rem;
+      transform: translateX(120%);
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .toast.show {
+      transform: translateX(0);
+    }
+
+    .toast.success {
+      border-left: 3px solid var(--success);
+    }
+
+    .toast.error {
+      border-left: 3px solid var(--danger);
+    }
+
+    .toast-icon {
+      font-size: 1rem;
+    }
+
+    @media (max-width: 480px) {
+      .header {
+        padding: 20px 16px;
+      }
+
+      main {
+        padding: 0 16px 140px;
+        gap: 24px;
+      }
+
+      .balance-card {
+        padding: 32px 20px;
+      }
+
+      .fab-container {
+        bottom: 20px;
+        width: calc(100% - 40px);
+        justify-content: center;
+      }
+
+      .fab {
+        padding: 12px 20px;
+        font-size: 0.8125rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">Expenditure</div>
+    <div class="date" id="currentDate"></div>
+  </header>
+
+  <main>
+    <section class="balance-card">
+      <div class="balance-label">Available Balance</div>
+      <div class="balance-amount" id="balanceAmount">$0</div>
+    </section>
+
+    <section class="health-section">
+      <div class="health-ring">
+        <svg viewBox="0 0 80 80">
+          <circle class="bg" cx="40" cy="40" r="34"/>
+          <circle class="progress" id="healthProgress" cx="40" cy="40" r="34" 
+            stroke-dasharray="213.628" stroke-dashoffset="213.628"/>
+        </svg>
+        <div class="health-percent" id="healthPercent">0%</div>
+      </div>
+      <div class="health-info">
+        <h3>Financial Health</h3>
+        <div class="health-status" id="healthStatus">Add income to get started</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <span class="section-title">Income Sources</span>
+        <span class="section-total" id="totalIncome">$0</span>
+      </div>
+      <div class="income-list" id="incomeList">
+        <div class="empty">No incomes added yet</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <span class="section-title">Expenses</span>
+        <span class="section-total expense-total" id="totalExpenses">$0</span>
+      </div>
+      <div class="expense-list" id="expenseList">
+        <div class="empty">No expenses recorded</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="fab-container">
+    <button class="fab income" id="addIncomeBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      Income
+    </button>
+    <button class="fab expense" id="addExpenseBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      Expense
+    </button>
+  </div>
+
+  <div class="modal-overlay" id="incomeModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Add Income</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <form id="incomeForm">
+        <div class="form-group">
+          <label class="form-label">Source Name</label>
+          <input type="text" class="form-input" name="source" placeholder="e.g., Salary, Freelance" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <input type="number" class="form-input" name="amount" placeholder="0.00" min="0" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input type="date" class="form-input" name="date" required>
+        </div>
+        <button type="submit" class="modal-submit income">Add Income</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="expenseModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Add Expense</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <form id="expenseForm">
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-input" name="description" placeholder="e.g., Groceries, Rent" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount</label>
+          <input type="number" class="form-input" name="amount" placeholder="0.00" min="0" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <input type="text" class="form-input" name="category" placeholder="e.g., Food, Transport" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input type="date" class="form-input" name="date" required>
+        </div>
+        <button type="submit" class="modal-submit expense">Add Expense</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // IndexedDB Setup
+    const DB_NAME = 'expenditure-db';
+    const DB_VERSION = 1;
+    let db;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => reject(request.error);
+        
+        request.onsuccess = () => {
+          db = request.result;
+          resolve(db);
+        };
+
+        request.onupgradeneeded = (event) => {
+          const database = event.target.result;
+          
+          if (!database.objectStoreNames.contains('incomes')) {
+            const incomeStore = database.createObjectStore('incomes', { keyPath: 'id', autoIncrement: true });
+            incomeStore.createIndex('source', 'source', { unique: false });
+            incomeStore.createIndex('date', 'date', { unique: false });
+          }
+          
+          if (!database.objectStoreNames.contains('expenses')) {
+            const expenseStore = database.createObjectStore('expenses', { keyPath: 'id', autoIncrement: true });
+            expenseStore.createIndex('description', 'description', { unique: false });
+            expenseStore.createIndex('date', 'date', { unique: false });
+            expenseStore.createIndex('category', 'category', { unique: false });
+          }
+        };
+      });
+    }
+
+    function addItem(storeName, data) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.add(data);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    function getAllItems(storeName) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    function deleteItem(storeName, id) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    // DOM Elements
+    const balanceAmountEl = document.getElementById('balanceAmount');
+    const healthProgressEl = document.getElementById('healthProgress');
+    const healthPercentEl = document.getElementById('healthPercent');
+    const healthStatusEl = document.getElementById('healthStatus');
+    const totalIncomeEl = document.getElementById('totalIncome');
+    const totalExpensesEl = document.getElementById('totalExpenses');
+    const incomeListEl = document.getElementById('incomeList');
+    const expenseListEl = document.getElementById('expenseList');
+    const incomeModal = document.getElementById('incomeModal');
+    const expenseModal = document.getElementById('expenseModal');
+    const incomeForm = document.getElementById('incomeForm');
+    const expenseForm = document.getElementById('expenseForm');
+    const toastContainer = document.getElementById('toastContainer');
+    const currentDateEl = document.getElementById('currentDate');
+
+    // Set today's date
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    currentDateEl.textContent = dateStr;
+
+    // Format currency
+    function formatCurrency(amount) {
+      return new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(amount);
+    }
+
+    // Format date
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // Toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `
+        <span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span>
+        <span>${message}</span>
+      `;
+      toastContainer.appendChild(toast);
+      
+      setTimeout(() => toast.classList.add('show'), 10);
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+      }, 3000);
+    }
+
+    // Update UI
+    async function updateUI() {
+      const incomes = await getAllItems('incomes');
+      const expenses = await getAllItems('expenses');
+
+      const totalIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
+      const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const balance = totalIncome - totalExpense;
+
+      // Update balance
+      balanceAmountEl.textContent = formatCurrency(Math.max(balance, 0));
+      balanceAmountEl.className = 'balance-amount';
+      if (balance > 0) balanceAmountEl.classList.add('positive');
+      else if (balance < 0) balanceAmountEl.classList.add('negative');
+      else balanceAmountEl.classList.add('zero');
+
+      // Update totals
+      totalIncomeEl.textContent = formatCurrency(totalIncome);
+      totalExpensesEl.textContent = formatCurrency(totalExpense);
+      totalExpensesEl.style.color = 'var(--danger)';
+
+      // Update health indicator
+      const circumference = 2 * Math.PI * 34;
+      let healthPercent = 0;
+      
+      if (totalIncome > 0 && balance > 0) {
+        healthPercent = Math.min(100, Math.round((balance / totalIncome) * 100));
+      } else if (balance <= 0) {
+        healthPercent = 0;
+      }
+
+      healthPercentEl.textContent = `${healthPercent}%`;
+      const offset = circumference - (healthPercent / 100) * circumference;
+      healthProgressEl.style.strokeDasharray = circumference;
+      healthProgressEl.style.strokeDashoffset = offset;
+
+      // Health status and color
+      healthProgressEl.classList.remove('good', 'great');
+      if (healthPercent >= 50) {
+        healthProgressEl.classList.add('great');
+        healthStatusEl.textContent = 'Looking healthy';
+      } else if (healthPercent >= 20) {
+        healthProgressEl.classList.add('good');
+        healthStatusEl.textContent = 'Manage spending carefully';
+      } else if (healthPercent > 0) {
+        healthStatusEl.textContent = 'Critical - expenses exceed income';
+      } else {
+        healthStatusEl.textContent = totalIncome === 0 ? 'Add income to get started' : 'Expenses exceed income';
+      }
+
+      // Render incomes
+      if (incomes.length === 0) {
+        incomeListEl.innerHTML = '<div class="empty">No incomes added yet</div>';
+      } else {
+        incomeListEl.innerHTML = incomes.map(inc => `
+          <div class="item">
+            <div class="item-info">
+              <div class="item-name">${inc.source}</div>
+              <div class="item-date">${formatDate(inc.date)}</div>
+            </div>
+            <div class="item-amount income">
+              <span>${formatCurrency(inc.amount)}</span>
+              <button class="delete-btn" data-delete-income="${inc.id}" title="Delete">✕</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Render expenses
+      if (expenses.length === 0) {
+        expenseListEl.innerHTML = '<div class="empty">No expenses recorded</div>';
+      } else {
+        const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+        expenseListEl.innerHTML = sortedExpenses.map(exp => `
+          <div class="item">
+            <div class="item-info">
+              <div class="item-name">${exp.description}</div>
+              <div class="item-date">${formatDate(exp.date)}</div>
+            </div>
+            <div class="item-amount expense">
+              <span class="category-tag">${exp.category}</span>
+              <span>${formatCurrency(exp.amount)}</span>
+              <button class="delete-btn" data-delete-expense="${exp.id}" title="Delete">✕</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Attach delete handlers
+      document.querySelectorAll('[data-delete-income]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await deleteItem('incomes', parseInt(btn.dataset.deleteIncome));
+          showToast('Income deleted');
+          updateUI();
+        });
+      });
+
+      document.querySelectorAll('[data-delete-expense]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await deleteItem('expenses', parseInt(btn.dataset.deleteExpense));
+          showToast('Expense deleted');
+          updateUI();
+        });
+      });
+    }
+
+    // Modal handling
+    function openModal(modal) {
+      modal.classList.add('active');
+    }
+
+    function closeModal(modal) {
+      modal.classList.remove('active');
+    }
+
+    document.getElementById('addIncomeBtn').addEventListener('click', () => openModal(incomeModal));
+    document.getElementById('addExpenseBtn').addEventListener('click', () => openModal(expenseModal));
+
+    document.querySelectorAll('[data-close]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        closeModal(incomeModal);
+        closeModal(expenseModal);
+      });
+    });
+
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          closeModal(incomeModal);
+          closeModal(expenseModal);
+        }
+      });
+    });
+
+    // Form submissions
+    incomeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(incomeForm);
+      const data = {
+        source: formData.get('source'),
+        amount: parseFloat(formData.get('amount')),
+        date: formData.get('date')
+      };
+      
+      await addItem('incomes', data);
+      closeModal(incomeModal);
+      incomeForm.reset();
+      showToast('Income added successfully');
+      updateUI();
+    });
+
+    expenseForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(expenseForm);
+      const data = {
+        description: formData.get('description'),
+        amount: parseFloat(formData.get('amount')),
+        category: formData.get('category'),
+        date: formData.get('date')
+      };
+      
+      await addItem('expenses', data);
+      closeModal(expenseModal);
+      expenseForm.reset();
+      showToast('Expense recorded');
+      updateUI();
+    });
+
+    // Set default dates
+    incomeForm.date.valueAsDate = today;
+    expenseForm.date.valueAsDate = today;
+
+    // Initialize
+    initDB().then(() => {
+      updateUI();
+    });
+  </script>
+</body>
+</html>
