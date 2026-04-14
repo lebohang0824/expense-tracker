@@ -1,7 +1,8 @@
 # Expense Tracker - Specification
 
 ## Project Overview
-- **Name**: Expenditure
+
+- **Name**: Expense Tracker
 - **Type**: Single-page web application (vanilla HTML/CSS/JS)
 - **Core Functionality**: Track multiple income sources and log expenses with real-time balance deduction using IndexedDB
 - **Target Users**: Individuals managing personal finances
@@ -9,8 +10,9 @@
 ## UI/UX Specification
 
 ### Layout Structure
+
 - **Header**: App title, current date
-- **Main Dashboard**: 
+- **Main Dashboard**:
   - Total balance card (prominent)
   - Health indicator ring
   - Income summary section
@@ -22,6 +24,7 @@
 ### Visual Design
 
 #### Color Palette
+
 - **Background**: Deep charcoal `#0d0d0f` with subtle noise texture
 - **Glass Surface**: `rgba(255, 255, 255, 0.03)` with `backdrop-filter: blur(20px)`
 - **Glass Border**: `rgba(255, 255, 255, 0.08)`
@@ -34,7 +37,8 @@
 - **Text Muted**: `#71717a`
 
 #### Typography
-- **Font Family**: 
+
+- **Font Family**:
   - Display: "Clash Display" (Google Fonts alternative: "Syne")
   - Body: "DM Sans"
 - **Sizes**:
@@ -44,12 +48,14 @@
   - Small/labels: 0.75rem
 
 #### Spacing System
+
 - Base unit: 4px
 - Card padding: 24px
 - Section gap: 32px
 - Element gap: 16px
 
 #### Visual Effects
+
 - Glassmorphism: `backdrop-filter: blur(20px)`, subtle white borders
 - Card shadows: `0 8px 32px rgba(0, 0, 0, 0.4)`
 - Hover transitions: 0.3s cubic-bezier(0.4, 0, 0.2, 1)
@@ -58,12 +64,14 @@
 ### Components
 
 #### Balance Card
+
 - Large hero number with currency symbol
 - "Available" label
 - Subtle pulsing glow when healthy
 - Glass background with border
 
 #### Health Indicator
+
 - Circular progress ring (SVG)
 - Gradient stroke from coral (bad) to mint (good)
 - Percentage in center
@@ -71,16 +79,19 @@
 - States: Critical (<20%), Warning (20-50%), Good (50-80%), Excellent (>80%)
 
 #### Income List
+
 - Card with list of incomes
 - Each row: source name, amount, date, delete button
 - Total income summary at top
 
 #### Expense List
+
 - Card with list of expenses
 - Each row: description, amount, date, category tag
 - Most recent first
 
 #### Modals
+
 - Centered overlay with backdrop blur
 - Glass card container
 - Close button (X)
@@ -88,17 +99,20 @@
 - Submit button
 
 #### Floating Action Buttons
+
 - Two buttons at bottom: "+ Income" (green tint), "+ Expense" (coral tint)
 - Pill-shaped, glass style
 - Icons: plus sign
 
 #### Toast Notifications
+
 - Slide in from right
 - Auto-dismiss after 3s
 - Glass style with accent border
 - Icon + message
 
 ### Responsive Breakpoints
+
 - Mobile: < 640px (stacked layout, smaller typography)
 - Tablet: 640px - 1024px
 - Desktop: > 1024px
@@ -123,7 +137,7 @@
    - Available Balance = Total Income - Total Expenses
 
 4. **Health Indicator**
-   - Health % = (Available Balance / Total Income) * 100
+   - Health % = (Available Balance / Total Income) \* 100
    - Capped at 100%, can go negative (show as 0%)
    - Visual feedback based on percentage
 
@@ -133,12 +147,14 @@
    - Delete individual items
 
 ### User Interactions
+
 - Click FAB → Open respective modal
 - Fill form → Submit → Save to DB → Update UI → Show toast
 - Click delete → Remove from DB → Update UI → Show toast
 - Click outside modal → Close modal (optional)
 
 ### Edge Cases
+
 - No incomes: Show prompt to add income
 - Balance = 0: Health shows 0%
 - Negative balance: Health shows 0%, show warning
@@ -147,11 +163,13 @@
 ## Technical Implementation
 
 ### IndexedDB Structure
-- Database: "expenditure-db"
+
+- Database: "Expense Tracker-db"
 - Stores: "incomes", "expenses"
 - Schema: { id: auto-increment, name/source, amount, date, category (expense only) }
 
 ### File Structure
+
 - index.html (single file with embedded CSS/JS for simplicity)
 
 ## Acceptance Criteria
