@@ -107,6 +107,87 @@
       letter-spacing: 0.1em;
       color: var(--text-muted);
       margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .options-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 2px;
+      border-radius: 6px;
+      font-size: 1.25rem;
+      line-height: 1;
+      letter-spacing: 0;
+      text-transform: none;
+      transition: color 0.2s, background 0.2s;
+      position: relative;
+      z-index: 2;
+    }
+
+    .options-btn:hover {
+      color: var(--text-primary);
+      background: var(--glass-hover);
+    }
+
+    .balance-options {
+      position: relative;
+      z-index: 2;
+    }
+
+    .dropdown {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      background: var(--bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 6px;
+      min-width: 180px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-6px);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      backdrop-filter: blur(20px);
+    }
+
+    .dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: none;
+      background: none;
+      color: var(--text-secondary);
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .dropdown-item:hover {
+      background: var(--glass-hover);
+      color: var(--text-primary);
+    }
+
+    .dropdown-item svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
     }
 
     .balance-amount {
@@ -299,6 +380,11 @@
     .delete-btn:hover {
       color: var(--danger);
       background: rgba(248, 113, 113, 0.1);
+    }
+
+    .delete-btn[data-edit-expense]:hover {
+      color: var(--accent-teal);
+      background: rgba(20, 184, 166, 0.1);
     }
 
     .category-tag {
@@ -580,7 +666,30 @@
 
   <main>
     <section class="balance-card">
-      <div class="balance-label">Available Balance</div>
+      <div class="balance-label">
+        Available Balance
+        <div class="balance-options">
+          <button class="options-btn" id="optionsBtn" title="Options">⋮</button>
+          <div class="dropdown" id="optionsDropdown">
+            <button class="dropdown-item" id="exportBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export Expenses
+            </button>
+            <button class="dropdown-item" id="importBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Import Expenses
+            </button>
+          </div>
+        </div>
+      </div>
       <div class="balance-amount" id="balanceAmount">$0</div>
     </section>
 
@@ -687,6 +796,28 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="importModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Import Data</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <form id="importForm">
+        <div class="form-group">
+          <label class="form-label">CSV File</label>
+          <input type="file" class="form-input" name="csvFile" accept=".csv" required style="padding: 10px 16px;">
+        </div>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:20px;line-height:1.6;">
+          The CSV must have a <strong>type</strong> column (<code>income</code> or <code>expense</code>).
+          Incomes need <strong>source</strong>, <strong>amount</strong>, <strong>date</strong>.
+          Expenses need <strong>description</strong>, <strong>amount</strong>, <strong>category</strong>, <strong>date</strong>.
+          All existing data will be replaced.
+        </p>
+        <button type="submit" class="modal-submit expense">Import & Override</button>
+      </form>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
@@ -755,6 +886,26 @@
       });
     }
 
+    function updateItem(storeName, data) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.put(data);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    function clearStore(storeName) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
     // DOM Elements
     const balanceAmountEl = document.getElementById('balanceAmount');
     const healthProgressEl = document.getElementById('healthProgress');
@@ -766,10 +917,14 @@
     const expenseListEl = document.getElementById('expenseList');
     const incomeModal = document.getElementById('incomeModal');
     const expenseModal = document.getElementById('expenseModal');
+    const importModal = document.getElementById('importModal');
     const incomeForm = document.getElementById('incomeForm');
     const expenseForm = document.getElementById('expenseForm');
+    const importForm = document.getElementById('importForm');
     const toastContainer = document.getElementById('toastContainer');
     const currentDateEl = document.getElementById('currentDate');
+
+    let editingExpenseId = null;
 
     // Set today's date
     const today = new Date();
@@ -809,6 +964,8 @@
     async function updateUI() {
       const incomes = await getAllItems('incomes');
       const expenses = await getAllItems('expenses');
+      incomesCache = incomes;
+      expensesCache = expenses;
 
       const totalIncome = incomes.reduce((sum, inc) => sum + inc.amount, 0);
       const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -887,6 +1044,7 @@
             <div class="item-amount expense">
               <span class="category-tag">${exp.category}</span>
               <span>${formatCurrency(exp.amount)}</span>
+              <button class="delete-btn" data-edit-expense="${exp.id}" title="Edit">✎</button>
               <button class="delete-btn" data-delete-expense="${exp.id}" title="Delete">✕</button>
             </div>
           </div>
@@ -909,6 +1067,22 @@
           updateUI();
         });
       });
+
+      document.querySelectorAll('[data-edit-expense]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const expenses = await getAllItems('expenses');
+          const expense = expenses.find(e => e.id === parseInt(btn.dataset.editExpense));
+          if (!expense) return;
+          editingExpenseId = expense.id;
+          expenseForm.querySelector('[name="description"]').value = expense.description;
+          expenseForm.querySelector('[name="amount"]').value = expense.amount;
+          expenseForm.querySelector('[name="category"]').value = expense.category;
+          expenseForm.querySelector('[name="date"]').value = expense.date;
+          expenseModal.querySelector('.modal-title').textContent = 'Edit Expense';
+          expenseModal.querySelector('.modal-submit').textContent = 'Save Changes';
+          openModal(expenseModal);
+        });
+      });
     }
 
     // Modal handling
@@ -918,15 +1092,156 @@
 
     function closeModal(modal) {
       modal.classList.remove('active');
+      if (modal === expenseModal) {
+        editingExpenseId = null;
+        expenseForm.reset();
+        expenseModal.querySelector('.modal-title').textContent = 'Add Expense';
+        expenseModal.querySelector('.modal-submit').textContent = 'Add Expense';
+      }
     }
 
+    // Dropdown
+    const optionsBtn = document.getElementById('optionsBtn');
+    const optionsDropdown = document.getElementById('optionsDropdown');
+
+    optionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      optionsDropdown.classList.toggle('active');
+    });
+
+    document.addEventListener('click', () => {
+      optionsDropdown.classList.remove('active');
+    });
+
+    function escapeCsv(val) {
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function generateCsv() {
+      const rows = [['type', 'source', 'description', 'amount', 'category', 'date']];
+      return rows.concat(
+        [...incomesCache].map(i => ['income', escapeCsv(i.source), '', i.amount, '', escapeCsv(i.date)]),
+        [...expensesCache].map(e => ['expense', '', escapeCsv(e.description), e.amount, escapeCsv(e.category), escapeCsv(e.date)])
+      ).map(r => r.join(',')).join('\n');
+    }
+
+    function downloadCsv(csv) {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const d = new Date();
+      const ts = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '-' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
+      a.download = `expenditure-export-${ts}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    let incomesCache = [];
+    let expensesCache = [];
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      optionsDropdown.classList.remove('active');
+      const csv = generateCsv();
+      downloadCsv(csv);
+      showToast('Data exported as CSV');
+    });
+
+    document.getElementById('importBtn').addEventListener('click', () => {
+      optionsDropdown.classList.remove('active');
+      openModal(importModal);
+    });
+
+    importForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = importForm.querySelector('[name="csvFile"]');
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const text = await file.text();
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) {
+        showToast('CSV file is empty or missing header', 'error');
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const typeIdx = headers.indexOf('type');
+      const sourceIdx = headers.indexOf('source');
+      const descIdx = headers.indexOf('description');
+      const amountIdx = headers.indexOf('amount');
+      const catIdx = headers.indexOf('category');
+      const dateIdx = headers.indexOf('date');
+
+      if (typeIdx === -1 || amountIdx === -1 || dateIdx === -1) {
+        showToast('CSV must have type, amount, and date columns', 'error');
+        return;
+      }
+
+      function parseVal(idx, row) {
+        if (idx === -1) return '';
+        let val = row[idx].trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.slice(1, -1).replace(/""/g, '"');
+        }
+        return val;
+      }
+
+      const incomes = [];
+      const expenses = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(',').map(s => s.trim());
+        const type = parseVal(typeIdx, row).toLowerCase();
+        const amount = parseFloat(parseVal(amountIdx, row));
+        const date = parseVal(dateIdx, row);
+
+        if (isNaN(amount) || !date) continue;
+
+        if (type === 'income') {
+          incomes.push({ source: parseVal(sourceIdx, row) || 'Imported', amount, date });
+        } else if (type === 'expense') {
+          expenses.push({ description: parseVal(descIdx, row) || 'Imported', amount, category: parseVal(catIdx, row) || 'Other', date });
+        }
+      }
+
+      await clearStore('incomes');
+      await clearStore('expenses');
+
+      for (const inc of incomes) {
+        await addItem('incomes', inc);
+      }
+      for (const exp of expenses) {
+        await addItem('expenses', exp);
+      }
+
+      closeModal(importModal);
+      importForm.reset();
+      showToast(`Imported ${incomes.length} incomes and ${expenses.length} expenses`);
+      updateUI();
+    });
+
     document.getElementById('addIncomeBtn').addEventListener('click', () => openModal(incomeModal));
-    document.getElementById('addExpenseBtn').addEventListener('click', () => openModal(expenseModal));
+    document.getElementById('addExpenseBtn').addEventListener('click', () => {
+      editingExpenseId = null;
+      expenseForm.reset();
+      expenseForm.querySelector('[name="date"]').valueAsDate = today;
+      expenseModal.querySelector('.modal-title').textContent = 'Add Expense';
+      expenseModal.querySelector('.modal-submit').textContent = 'Add Expense';
+      openModal(expenseModal);
+    });
 
     document.querySelectorAll('[data-close]').forEach(btn => {
       btn.addEventListener('click', () => {
         closeModal(incomeModal);
         closeModal(expenseModal);
+        closeModal(importModal);
       });
     });
 
@@ -935,6 +1250,7 @@
         if (e.target === overlay) {
           closeModal(incomeModal);
           closeModal(expenseModal);
+          closeModal(importModal);
         }
       });
     });
@@ -965,11 +1281,21 @@
         category: formData.get('category'),
         date: formData.get('date')
       };
-      
-      await addItem('expenses', data);
+
+      if (editingExpenseId) {
+        data.id = editingExpenseId;
+        await updateItem('expenses', data);
+        showToast('Expense updated');
+      } else {
+        await addItem('expenses', data);
+        showToast('Expense recorded');
+      }
+
       closeModal(expenseModal);
       expenseForm.reset();
-      showToast('Expense recorded');
+      editingExpenseId = null;
+      expenseModal.querySelector('.modal-title').textContent = 'Add Expense';
+      expenseModal.querySelector('.modal-submit').textContent = 'Add Expense';
       updateUI();
     });
 
