@@ -862,6 +862,22 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Delete Expense</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <p style="font-size:0.9375rem;color:var(--text-secondary);margin-bottom:28px;line-height:1.6;" id="deleteMessage">
+        Are you sure you want to delete this expense?
+      </p>
+      <div style="display:flex;gap:12px;">
+        <button class="modal-submit" id="deleteCancel" style="background:var(--bg-subtle);color:var(--text-secondary);flex:1;">Cancel</button>
+        <button class="modal-submit expense" id="deleteConfirm" style="flex:1;">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
@@ -1097,18 +1113,20 @@
 
       // Attach delete handlers
       document.querySelectorAll('[data-delete-income]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          await deleteItem('incomes', parseInt(btn.dataset.deleteIncome));
-          showToast('Income deleted');
-          updateUI();
+        btn.addEventListener('click', () => {
+          pendingDelete = { store: 'incomes', id: parseInt(btn.dataset.deleteIncome), label: 'income' };
+          deleteModal.querySelector('.modal-title').textContent = 'Delete Income';
+          deleteMessage.textContent = 'Are you sure you want to delete this income?';
+          openModal(deleteModal);
         });
       });
 
       document.querySelectorAll('[data-delete-expense]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          await deleteItem('expenses', parseInt(btn.dataset.deleteExpense));
-          showToast('Expense deleted');
-          updateUI();
+        btn.addEventListener('click', () => {
+          pendingDelete = { store: 'expenses', id: parseInt(btn.dataset.deleteExpense), label: 'expense' };
+          deleteModal.querySelector('.modal-title').textContent = 'Delete Expense';
+          deleteMessage.textContent = 'Are you sure you want to delete this expense?';
+          openModal(deleteModal);
         });
       });
 
@@ -1141,6 +1159,9 @@
         expenseForm.reset();
         expenseModal.querySelector('.modal-title').textContent = 'Add Expense';
         expenseModal.querySelector('.modal-submit').textContent = 'Add Expense';
+      }
+      if (modal === deleteModal) {
+        pendingDelete = null;
       }
     }
 
@@ -1187,6 +1208,7 @@
       URL.revokeObjectURL(url);
     }
 
+    let pendingDelete = null;
     let incomesCache = [];
     let expensesCache = [];
 
@@ -1271,6 +1293,21 @@
       updateUI();
     });
 
+    document.getElementById('deleteConfirm').addEventListener('click', async () => {
+      if (!pendingDelete) return;
+      await deleteItem(pendingDelete.store, pendingDelete.id);
+      const label = pendingDelete.label;
+      pendingDelete = null;
+      closeModal(deleteModal);
+      showToast(`${label.charAt(0).toUpperCase() + label.slice(1)} deleted`);
+      updateUI();
+    });
+
+    document.getElementById('deleteCancel').addEventListener('click', () => {
+      pendingDelete = null;
+      closeModal(deleteModal);
+    });
+
     document.getElementById('addIncomeBtn').addEventListener('click', () => openModal(incomeModal));
     document.getElementById('addExpenseBtn').addEventListener('click', () => {
       editingExpenseId = null;
@@ -1286,6 +1323,7 @@
         closeModal(incomeModal);
         closeModal(expenseModal);
         closeModal(importModal);
+        closeModal(deleteModal);
       });
     });
 
@@ -1295,6 +1333,8 @@
           closeModal(incomeModal);
           closeModal(expenseModal);
           closeModal(importModal);
+          closeModal(deleteModal);
+          pendingDelete = null;
         }
       });
     });
