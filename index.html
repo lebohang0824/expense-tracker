@@ -311,6 +311,10 @@
       color: var(--success);
     }
 
+    .expense-total {
+      cursor: pointer;
+    }
+
     .income-list, .expense-list {
       display: flex;
       flex-direction: column;
@@ -1127,7 +1131,7 @@
 
       // Update totals
       totalIncomeEl.textContent = formatCurrency(totalIncome);
-      totalExpensesEl.textContent = formatCurrency(totalExpense);
+      totalExpensesEl.textContent = showExpensePercent ? (totalIncome > 0 ? Math.round((totalExpense / totalIncome) * 100) + '%' : '0%') : formatCurrency(totalExpense);
       totalExpensesEl.style.color = 'var(--danger)';
 
       // Update health indicator
@@ -1408,6 +1412,11 @@
     document.getElementById('deleteCancel').addEventListener('click', () => {
       pendingDelete = null;
       closeModal(deleteModal);
+    });
+
+    totalExpensesEl.addEventListener('click', () => {
+      showExpensePercent = !showExpensePercent;
+      updateUI();
     });
 
     document.getElementById('addIncomeBtn').addEventListener('click', () => openModal(incomeModal));
