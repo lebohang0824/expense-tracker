@@ -1181,7 +1181,7 @@
       if (expenses.length === 0) {
         expenseListEl.innerHTML = '<div class="empty">No expenses recorded</div>';
       } else {
-        const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+        const sortedExpenses = [...expenses].sort((a, b) => new Date(a.date) - new Date(b.date));
         expenseListEl.innerHTML = sortedExpenses.map(exp => {
           const status = getStatusInfo(exp);
           const itemCls = status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '';
