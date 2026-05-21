@@ -1300,6 +1300,9 @@
       rows.push(['total expenses', '', '', totalExpenses, '', '', '', '']);
       const totalExpensePct = totalIncome > 0 ? ((totalExpenses / totalIncome) * 100).toFixed(1) : '';
       rows.push(['total expense %', '', '', '', '', '', '', totalExpensePct]);
+      const availableBalance = totalIncome - totalExpenses;
+      const availPct = totalIncome > 0 ? ((availableBalance / totalIncome) * 100).toFixed(1) : '';
+      rows.push(['available balance', '', '', availableBalance.toFixed(2), '', '', '', availPct]);
       for (const e of expensesCache) {
         const pct = totalIncome > 0 ? ((e.amount / totalIncome) * 100).toFixed(1) : '';
         rows.push(['expense', '', escapeCsv(e.description), e.amount, escapeCsv(e.category), escapeCsv(e.date), escapeCsv(e.status || 'pending'), pct]);
