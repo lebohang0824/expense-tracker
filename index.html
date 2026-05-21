@@ -1199,7 +1199,7 @@
                 ? `<span class="category-tag">${exp.category}</span>`
                 : `<span class="status-tag ${status.cls}">${status.label}</span>`
               }
-              <span>${formatCurrency(exp.amount)}</span>
+              <span class="amount-toggle">${showExpensePercent ? (totalExpense > 0 ? Math.round((exp.amount / totalExpense) * 100) + '%' : '0%') : formatCurrency(exp.amount)}</span>
               <button class="delete-btn" data-edit-expense="${exp.id}" title="Edit">✎</button>
               <button class="delete-btn" data-delete-expense="${exp.id}" title="Delete">✕</button>
             </div>
@@ -1307,6 +1307,7 @@
     }
 
     let showExpenseCategory = false;
+    let showExpensePercent = false;
     let pendingDelete = null;
     let incomesCache = [];
     let expensesCache = [];
@@ -1411,6 +1412,12 @@
 
     document.getElementById('addIncomeBtn').addEventListener('click', () => openModal(incomeModal));
     expenseListEl.addEventListener('click', (e) => {
+      const toggle = e.target.closest('.amount-toggle');
+      if (toggle) {
+        showExpensePercent = !showExpensePercent;
+        updateUI();
+        return;
+      }
       const badge = e.target.closest('.status-tag, .category-tag');
       if (!badge) return;
       showExpenseCategory = !showExpenseCategory;
