@@ -328,8 +328,20 @@
       transition: border-color 0.3s ease;
     }
 
+    .item.warning {
+      border-color: var(--accent-amber);
+    }
+    .item.critical {
+      border-color: var(--danger);
+    }
     .item:hover {
       border-color: var(--glass-border);
+    }
+    .item.warning:hover {
+      border-color: var(--accent-amber);
+    }
+    .item.critical:hover {
+      border-color: var(--danger);
     }
 
     .item-info {
@@ -1172,8 +1184,9 @@
         const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
         expenseListEl.innerHTML = sortedExpenses.map(exp => {
           const status = getStatusInfo(exp);
+          const itemCls = status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '';
           return `
-          <div class="item">
+          <div class="item${itemCls ? ' ' + itemCls : ''}">
             <div class="item-info">
               <div class="item-name">${exp.description}</div>
               <div class="item-date">${formatDate(exp.date)}</div>
@@ -1187,8 +1200,8 @@
               <button class="delete-btn" data-edit-expense="${exp.id}" title="Edit">✎</button>
               <button class="delete-btn" data-delete-expense="${exp.id}" title="Delete">✕</button>
             </div>
-          </div>
-        `}).join('');
+          </div>`
+        }).join('');
       }
 
       // Attach delete handlers
