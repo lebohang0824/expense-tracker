@@ -40,6 +40,13 @@
               </svg>
               Import Expenses
             </button>
+            <button class="dropdown-item" id="settingsBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+              </svg>
+              Settings
+            </button>
           </div>
         </div>
       </div>
@@ -192,6 +199,25 @@
         <button class="modal-submit" id="deleteCancel" style="background:var(--bg-subtle);color:var(--text-secondary);flex:1;">Cancel</button>
         <button class="modal-submit expense" id="deleteConfirm" style="flex:1;">Delete</button>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Settings</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <div class="settings-option">
+        <span class="settings-label">Status Borders</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="criticalBorderToggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p class="settings-hint">Show warning and critical borders on expenses</p>
+      <div class="settings-divider"></div>
+      <button class="settings-danger-btn" id="clearStorageBtn">Clear All Data</button>
     </div>
   </div>
 

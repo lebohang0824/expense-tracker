@@ -97,6 +97,9 @@ const importModal = document.getElementById('importModal');
 const incomeForm = document.getElementById('incomeForm');
 const expenseForm = document.getElementById('expenseForm');
 const importForm = document.getElementById('importForm');
+const deleteModal = document.getElementById('deleteModal');
+const deleteMessage = document.getElementById('deleteMessage');
+const settingsModal = document.getElementById('settingsModal');
 const toastContainer = document.getElementById('toastContainer');
 const currentDateEl = document.getElementById('currentDate');
 
@@ -220,7 +223,7 @@ return priority[getStatusInfo(a).cls] - priority[getStatusInfo(b).cls];
 });
     expenseListEl.innerHTML = sortedExpenses.map(exp => {
       const status = getStatusInfo(exp);
-      const itemCls = status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '';
+      const itemCls = showCriticalBorder ? (status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '') : '';
       return `
       <div class="item${itemCls ? ' ' + itemCls : ''}">
         <div class="item-info">
@@ -352,7 +355,9 @@ function downloadCsv(csv) {
 
 let showExpenseCategory = false;
 let showExpensePercent = false;
+let showCriticalBorder = localStorage.getItem('showCriticalBorder') === 'true';
 let pendingDelete = null;
+let pendingConfirm = null;
 let incomesCache = [];
 let expensesCache = [];
 
@@ -366,6 +371,12 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 document.getElementById('importBtn').addEventListener('click', () => {
   optionsDropdown.classList.remove('active');
   openModal(importModal);
+});
+
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  optionsDropdown.classList.remove('active');
+  document.getElementById('criticalBorderToggle').checked = showCriticalBorder;
+  openModal(settingsModal);
 });
 
 importForm.addEventListener('submit', async (e) => {
@@ -440,6 +451,13 @@ importForm.addEventListener('submit', async (e) => {
 });
 
 document.getElementById('deleteConfirm').addEventListener('click', async () => {
+  if (pendingConfirm) {
+    const fn = pendingConfirm;
+    pendingConfirm = null;
+    closeModal(deleteModal);
+    await fn();
+    return;
+  }
   if (!pendingDelete) return;
   await deleteItem(pendingDelete.store, pendingDelete.id);
   const label = pendingDelete.label;
@@ -450,8 +468,28 @@ document.getElementById('deleteConfirm').addEventListener('click', async () => {
 });
 
 document.getElementById('deleteCancel').addEventListener('click', () => {
+  pendingConfirm = null;
   pendingDelete = null;
   closeModal(deleteModal);
+});
+
+document.getElementById('criticalBorderToggle').addEventListener('change', (e) => {
+  showCriticalBorder = e.target.checked;
+  localStorage.setItem('showCriticalBorder', showCriticalBorder);
+  updateUI();
+});
+
+document.getElementById('clearStorageBtn').addEventListener('click', () => {
+  closeModal(settingsModal);
+  pendingConfirm = async () => {
+    await clearStore('incomes');
+    await clearStore('expenses');
+    showToast('All data cleared');
+    updateUI();
+  };
+  deleteModal.querySelector('.modal-title').textContent = 'Clear All Data';
+  deleteMessage.textContent = 'Are you sure you want to delete all data? This cannot be undone.';
+  openModal(deleteModal);
 });
 
 totalExpensesEl.addEventListener('click', () => {
@@ -489,6 +527,7 @@ document.querySelectorAll('[data-close]').forEach(btn => {
     closeModal(expenseModal);
     closeModal(importModal);
     closeModal(deleteModal);
+    closeModal(settingsModal);
   });
 });
 
@@ -499,7 +538,9 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
       closeModal(expenseModal);
       closeModal(importModal);
       closeModal(deleteModal);
+      closeModal(settingsModal);
       pendingDelete = null;
+      pendingConfirm = null;
     }
   });
 });
