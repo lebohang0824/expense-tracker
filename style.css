@@ -119,13 +119,10 @@ main {
 
 .balance-options {
   position: relative;
-  z-index: 2;
 }
 
 .dropdown {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
+  position: fixed;
   background: var(--bg);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
@@ -137,6 +134,7 @@ main {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
   backdrop-filter: blur(20px);
+  z-index: 1000;
 }
 
 .dropdown.active {

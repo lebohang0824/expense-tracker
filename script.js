@@ -302,6 +302,10 @@ const optionsDropdown = document.getElementById('optionsDropdown');
 
 optionsBtn.addEventListener('click', (e) => {
   e.stopPropagation();
+  const rect = optionsBtn.getBoundingClientRect();
+  optionsDropdown.style.left = '';
+  optionsDropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  optionsDropdown.style.top = (rect.bottom + 8) + 'px';
   optionsDropdown.classList.toggle('active');
 });
 
