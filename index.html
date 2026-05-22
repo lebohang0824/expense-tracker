@@ -325,7 +325,9 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 14px 16px;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 12px;
       background: var(--bg-subtle);
       border-radius: 12px;
       border: 1px solid transparent;
@@ -350,27 +352,33 @@
 
     .item-info {
       display: flex;
-      flex-direction: column;
-      gap: 2px;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      flex: 1;
+      min-width: 0;
     }
 
     .item-name {
-      font-size: 0.9375rem;
+      flex-shrink: 0;
+      font-size: 0.875rem;
       font-weight: 500;
     }
 
     .item-date {
-      font-size: 0.75rem;
+      font-size: 0.6875rem;
       color: var(--text-muted);
     }
 
     .item-amount {
       display: flex;
       align-items: center;
-      gap: 12px;
+      flex: 0 0 100%;
+      justify-content: flex-start;
+      gap: 8px;
       font-family: var(--font-display);
       font-weight: 600;
-      font-size: 0.9375rem;
+      font-size: 0.875rem;
     }
 
     .item-amount.income {
@@ -381,15 +389,19 @@
       color: var(--danger);
     }
 
+    .delete-btn[data-edit-expense] {
+      margin-left: auto;
+    }
+
     .delete-btn {
       background: none;
       border: none;
       color: var(--text-muted);
       cursor: pointer;
-      padding: 4px;
+      padding: 2px;
       border-radius: 6px;
       transition: color 0.2s, background 0.2s;
-      font-size: 1rem;
+      font-size: 0.8125rem;
       line-height: 1;
     }
 
@@ -404,8 +416,8 @@
     }
 
     .category-tag {
-      font-size: 0.6875rem;
-      padding: 4px 10px;
+      font-size: 0.5625rem;
+      padding: 2px 8px;
       background: rgba(248, 113, 113, 0.15);
       color: var(--danger);
       border-radius: 20px;
@@ -414,8 +426,8 @@
     }
 
     .status-tag {
-      font-size: 0.6875rem;
-      padding: 4px 10px;
+      font-size: 0.5625rem;
+      padding: 2px 8px;
       border-radius: 20px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -721,52 +733,8 @@
         padding: 12px 20px;
         font-size: 0.8125rem;
       }
-
-      .item {
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 10px 12px;
-      }
-
-      .item-info {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-        flex: 1;
-        min-width: 0;
-      }
-
-      .item-name {
-        flex-shrink: 0;
-        font-size: 0.875rem;
-      }
-
-      .item-date {
-        font-size: 0.6875rem;
-      }
-
-      .item-amount {
-        flex: 0 0 100%;
-        justify-content: flex-start;
-        gap: 8px;
-        font-size: 0.875rem;
-      }
-
-      .delete-btn[data-edit-expense] {
-        margin-left: auto;
-      }
-
-      .delete-btn {
-        padding: 2px;
-        font-size: 0.8125rem;
-      }
-
-      .category-tag,
-      .status-tag {
-        font-size: 0.5625rem;
-        padding: 2px 8px;
-      }
     }
+
   </style>
 </head>
 <body>
