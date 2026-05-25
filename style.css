@@ -178,6 +178,17 @@ main {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
+  cursor: pointer;
+}
+
+.balance-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .balance-amount.positive {

@@ -84,6 +84,8 @@ function clearStore(storeName) {
 }
 
 const balanceAmountEl = document.getElementById('balanceAmount');
+const balanceLabelText = document.getElementById('balanceLabelText');
+const balanceSubtitleEl = document.getElementById('balanceSubtitle');
 const healthProgressEl = document.getElementById('healthProgress');
 const healthPercentEl = document.getElementById('healthPercent');
 const healthStatusEl = document.getElementById('healthStatus');
@@ -160,11 +162,37 @@ async function updateUI() {
   const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
   const balance = totalIncome - totalExpense;
 
-  balanceAmountEl.textContent = formatCurrency(Math.max(balance, 0));
-  balanceAmountEl.className = 'balance-amount';
-  if (balance > 0) balanceAmountEl.classList.add('positive');
-  else if (balance < 0) balanceAmountEl.classList.add('negative');
-  else balanceAmountEl.classList.add('zero');
+  const paidExpenses = expenses.filter(e => e.status === 'paid');
+  const unpaidExpenses = expenses.filter(e => e.status !== 'paid');
+  const totalPaid = paidExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalUnpaid = unpaidExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  if (balanceViewMode === 'unpaid') {
+    balanceLabelText.textContent = 'Unpaid Expenses';
+    balanceAmountEl.textContent = formatCurrency(totalUnpaid);
+    balanceAmountEl.className = 'balance-amount';
+    if (totalUnpaid > 0) balanceAmountEl.classList.add('negative');
+    else balanceAmountEl.classList.add('zero');
+    balanceSubtitleEl.textContent = '';
+    balanceSubtitleEl.title = '';
+  } else if (balanceViewMode === 'paid') {
+    balanceLabelText.textContent = 'Paid Expenses';
+    balanceAmountEl.textContent = formatCurrency(totalPaid);
+    balanceAmountEl.className = 'balance-amount';
+    if (totalPaid > 0) balanceAmountEl.classList.add('positive');
+    else balanceAmountEl.classList.add('zero');
+    balanceSubtitleEl.textContent = '';
+    balanceSubtitleEl.title = '';
+  } else {
+    balanceLabelText.textContent = 'Available Balance';
+    balanceAmountEl.textContent = formatCurrency(Math.max(balance, 0));
+    balanceAmountEl.className = 'balance-amount';
+    if (balance > 0) balanceAmountEl.classList.add('positive');
+    else if (balance < 0) balanceAmountEl.classList.add('negative');
+    else balanceAmountEl.classList.add('zero');
+    balanceSubtitleEl.textContent = '';
+    balanceSubtitleEl.title = '';
+  }
 
   totalIncomeEl.textContent = formatCurrency(totalIncome);
   totalExpensesEl.textContent = showExpensePercent ? (totalIncome > 0 ? Math.round((totalExpense / totalIncome) * 100) + '%' : '0%') : formatCurrency(totalExpense);
@@ -364,6 +392,7 @@ let pendingDelete = null;
 let pendingConfirm = null;
 let incomesCache = [];
 let expensesCache = [];
+let balanceViewMode = 'balance';
 
 document.getElementById('exportBtn').addEventListener('click', () => {
   optionsDropdown.classList.remove('active');
@@ -498,6 +527,13 @@ document.getElementById('clearStorageBtn').addEventListener('click', () => {
 
 totalExpensesEl.addEventListener('click', () => {
   showExpensePercent = !showExpensePercent;
+  updateUI();
+});
+
+balanceAmountEl.addEventListener('click', () => {
+  const modes = ['balance', 'unpaid', 'paid'];
+  const idx = modes.indexOf(balanceViewMode);
+  balanceViewMode = modes[(idx + 1) % modes.length];
   updateUI();
 });
 
