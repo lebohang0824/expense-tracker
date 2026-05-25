@@ -93,6 +93,10 @@ const totalIncomeEl = document.getElementById('totalIncome');
 const totalExpensesEl = document.getElementById('totalExpenses');
 const incomeListEl = document.getElementById('incomeList');
 const expenseListEl = document.getElementById('expenseList');
+const expenseCountEl = document.getElementById('expenseCount');
+const paidStatEl = document.getElementById('paidStat');
+const pendingStatEl = document.getElementById('pendingStat');
+const missedStatEl = document.getElementById('missedStat');
 const incomeModal = document.getElementById('incomeModal');
 const expenseModal = document.getElementById('expenseModal');
 const importModal = document.getElementById('importModal');
@@ -163,15 +167,19 @@ async function updateUI() {
   const balance = totalIncome - totalExpense;
 
   const paidExpenses = expenses.filter(e => e.status === 'paid');
-  const unpaidExpenses = expenses.filter(e => e.status !== 'paid');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const pendingExpenses = expenses.filter(e => e.status === 'pending' && new Date(e.date) >= now);
+  const missedExpenses = expenses.filter(e => e.status === 'missed' || (e.status === 'pending' && new Date(e.date) < now));
   const totalPaid = paidExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const totalUnpaid = unpaidExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalPending = pendingExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalMissed = missedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-  if (balanceViewMode === 'unpaid') {
-    balanceLabelText.textContent = 'Unpaid Expenses';
-    balanceAmountEl.textContent = formatCurrency(totalUnpaid);
+  if (balanceViewMode === 'pending') {
+    balanceLabelText.textContent = 'Pending Expenses';
+    balanceAmountEl.textContent = formatCurrency(totalPending);
     balanceAmountEl.className = 'balance-amount';
-    if (totalUnpaid > 0) balanceAmountEl.classList.add('negative');
+    if (totalPending > 0) balanceAmountEl.classList.add('negative');
     else balanceAmountEl.classList.add('zero');
     balanceSubtitleEl.textContent = '';
     balanceSubtitleEl.title = '';
@@ -180,6 +188,14 @@ async function updateUI() {
     balanceAmountEl.textContent = formatCurrency(totalPaid);
     balanceAmountEl.className = 'balance-amount';
     if (totalPaid > 0) balanceAmountEl.classList.add('positive');
+    else balanceAmountEl.classList.add('zero');
+    balanceSubtitleEl.textContent = '';
+    balanceSubtitleEl.title = '';
+  } else if (balanceViewMode === 'missed') {
+    balanceLabelText.textContent = 'Missed Expenses';
+    balanceAmountEl.textContent = formatCurrency(totalMissed);
+    balanceAmountEl.className = 'balance-amount';
+    if (totalMissed > 0) balanceAmountEl.classList.add('negative');
     else balanceAmountEl.classList.add('zero');
     balanceSubtitleEl.textContent = '';
     balanceSubtitleEl.title = '';
@@ -270,6 +286,11 @@ return priority[getStatusInfo(a).cls] - priority[getStatusInfo(b).cls];
       </div>`
     }).join('');
   }
+
+  expenseCountEl.textContent = `(${expenses.length})`;
+  pendingStatEl.textContent = `Pending (${pendingExpenses.length})`;
+  paidStatEl.textContent = `Paid (${paidExpenses.length})`;
+  missedStatEl.textContent = `Missed (${missedExpenses.length})`;
 
   document.querySelectorAll('[data-delete-income]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -531,7 +552,7 @@ totalExpensesEl.addEventListener('click', () => {
 });
 
 balanceAmountEl.addEventListener('click', () => {
-  const modes = ['balance', 'unpaid', 'paid'];
+  const modes = ['balance', 'pending', 'paid', 'missed'];
   const idx = modes.indexOf(balanceViewMode);
   balanceViewMode = modes[(idx + 1) % modes.length];
   updateUI();

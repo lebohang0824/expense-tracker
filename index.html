@@ -27,6 +27,11 @@
       </div>
       <div class="balance-amount" id="balanceAmount">R0</div>
       <div class="balance-subtitle" id="balanceSubtitle"></div>
+      <div class="balance-stats">
+        <span class="balance-stat pending" id="pendingStat"></span>
+        <span class="balance-stat paid" id="paidStat"></span>
+        <span class="balance-stat missed" id="missedStat"></span>
+      </div>
     </section>
 
     <div class="dropdown" id="optionsDropdown">
@@ -82,7 +87,7 @@
 
     <section class="section">
       <div class="section-header">
-        <span class="section-title">Expenses</span>
+        <span class="section-title">Expenses <span class="section-count" id="expenseCount"></span></span>
         <span class="section-total expense-total" id="totalExpenses">R0</span>
       </div>
       <div class="expense-list" id="expenseList">

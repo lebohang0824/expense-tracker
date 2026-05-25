@@ -191,6 +191,31 @@ main {
   white-space: nowrap;
 }
 
+.balance-stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.balance-stat {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.balance-stat.pending {
+  color: #3b82f6;
+}
+
+.balance-stat.paid {
+  color: var(--success);
+}
+
+.balance-stat.missed {
+  color: var(--danger);
+}
+
 .balance-amount.positive {
   color: var(--success);
 }
@@ -293,6 +318,15 @@ main {
   font-weight: 600;
   font-size: 1rem;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .section-total {
