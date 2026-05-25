@@ -291,6 +291,9 @@ return priority[getStatusInfo(a).cls] - priority[getStatusInfo(b).cls];
   pendingStatEl.textContent = `Pending (${pendingExpenses.length})`;
   paidStatEl.textContent = `Paid (${paidExpenses.length})`;
   missedStatEl.textContent = `Missed (${missedExpenses.length})`;
+  pendingStatEl.classList.toggle('active', balanceViewMode === 'pending');
+  paidStatEl.classList.toggle('active', balanceViewMode === 'paid');
+  missedStatEl.classList.toggle('active', balanceViewMode === 'missed');
 
   document.querySelectorAll('[data-delete-income]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -555,6 +558,21 @@ balanceAmountEl.addEventListener('click', () => {
   const modes = ['balance', 'pending', 'paid', 'missed'];
   const idx = modes.indexOf(balanceViewMode);
   balanceViewMode = modes[(idx + 1) % modes.length];
+  updateUI();
+});
+
+pendingStatEl.addEventListener('click', () => {
+  balanceViewMode = balanceViewMode === 'pending' ? 'balance' : 'pending';
+  updateUI();
+});
+
+paidStatEl.addEventListener('click', () => {
+  balanceViewMode = balanceViewMode === 'paid' ? 'balance' : 'paid';
+  updateUI();
+});
+
+missedStatEl.addEventListener('click', () => {
+  balanceViewMode = balanceViewMode === 'missed' ? 'balance' : 'missed';
   updateUI();
 });
 

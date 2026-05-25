@@ -205,6 +205,17 @@ main {
   font-weight: 500;
   padding: 0 8px;
   border-right: 1px solid var(--glass-border);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.balance-stat.active {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.balance-stat:not(.active) {
+  opacity: 0.55;
 }
 
 .balance-stat:last-child {
