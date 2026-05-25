@@ -193,15 +193,22 @@ main {
 
 .balance-stats {
   display: flex;
-  gap: 16px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--glass-border);
 }
 
 .balance-stat {
+  flex: 1;
+  text-align: center;
   font-size: 0.75rem;
   font-weight: 500;
+  padding: 0 8px;
+  border-right: 1px solid var(--glass-border);
+}
+
+.balance-stat:last-child {
+  border-right: none;
 }
 
 .balance-stat.pending {
@@ -222,6 +229,10 @@ main {
 
 .balance-amount.negative {
   color: var(--danger);
+}
+
+.balance-amount.pending {
+  color: #3b82f6;
 }
 
 .balance-amount.zero {

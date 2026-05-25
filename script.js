@@ -179,7 +179,7 @@ async function updateUI() {
     balanceLabelText.textContent = 'Pending Expenses';
     balanceAmountEl.textContent = formatCurrency(totalPending);
     balanceAmountEl.className = 'balance-amount';
-    if (totalPending > 0) balanceAmountEl.classList.add('negative');
+    if (totalPending > 0) balanceAmountEl.classList.add('pending');
     else balanceAmountEl.classList.add('zero');
     balanceSubtitleEl.textContent = '';
     balanceSubtitleEl.title = '';
