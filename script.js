@@ -1,5 +1,5 @@
 const DB_NAME = 'expenditure-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 let db;
 const LOCK_TIMEOUT = 30 * 60 * 1000;
 let lastActivity = Date.now();
@@ -27,6 +27,9 @@ function initDB() {
       }
       if (!database.objectStoreNames.contains('_crypto')) {
         database.createObjectStore('_crypto');
+      }
+      if (!database.objectStoreNames.contains('_prf')) {
+        database.createObjectStore('_prf');
       }
     };
   });
@@ -95,7 +98,7 @@ function terminateWorker() {
   }
 }
 
-function postToWorker(type, data) {
+function postToWorker(type, data, transfer) {
   return new Promise((resolve, reject) => {
     if (!worker) {
       reject(new Error('Worker not available'));
@@ -103,7 +106,11 @@ function postToWorker(type, data) {
     }
     const id = ++msgId;
     pendingRequests.set(id, { resolve, reject });
-    worker.postMessage({ id, type, data });
+    if (transfer) {
+      worker.postMessage({ id, type, data }, transfer);
+    } else {
+      worker.postMessage({ id, type, data });
+    }
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
@@ -113,9 +120,43 @@ function postToWorker(type, data) {
   });
 }
 
+function loadPrfData() {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('_prf', 'readonly');
+    const r = t.objectStore('_prf').get('prf-data');
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+function savePrfData(data) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('_prf', 'readwrite');
+    const r = t.objectStore('_prf').put(data, 'prf-data');
+    r.onsuccess = () => resolve();
+    r.onerror = () => reject(r.error);
+  });
+}
+
+function deletePrfData() {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction('_prf', 'readwrite');
+    const r = t.objectStore('_prf').delete('prf-data');
+    r.onsuccess = () => resolve();
+    r.onerror = () => reject(r.error);
+  });
+}
+
 async function hasEncryptionKey() {
+  const prfData = await loadPrfData();
+  if (prfData) return true;
   const result = await postToWorker('has-key');
   return result.ok;
+}
+
+async function usePrfFlow() {
+  const prfData = await loadPrfData();
+  return !!prfData;
 }
 
 async function addItem(storeName, data) {
@@ -223,6 +264,33 @@ async function createCredential() {
         userVerification: 'required'
       },
       timeout: 60000
+    }
+  });
+}
+
+async function createCredentialWithPrf() {
+  return navigator.credentials.create({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'Expenditure', id: webauthnRpId() },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: 'expenditure-user',
+        displayName: 'Expenditure'
+      },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },
+        { type: 'public-key', alg: -257 }
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: 'platform',
+        residentKey: 'required',
+        userVerification: 'required'
+      },
+      timeout: 60000,
+      extensions: {
+        prf: {}
+      }
     }
   });
 }
@@ -828,6 +896,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', () => {
   pendingConfirm = async () => {
     await clearStore('incomes');
     await clearStore('expenses');
+    await deletePrfData();
     await deleteEncryptionKey();
     await postToWorker('delete-key').catch(() => {});
     showToast('All data cleared');
@@ -962,6 +1031,7 @@ unlockBtn.addEventListener('click', async () => {
   unlockBtn.disabled = true;
   unlockBtn.textContent = 'Authenticating...';
   let hasKey;
+  let isPrf = false;
 
   try {
     const wa = webauthnAvailable();
@@ -980,19 +1050,76 @@ unlockBtn.addEventListener('click', async () => {
     hasKey = await hasEncryptionKey();
 
     if (hasKey) {
-      await authenticate();
-      const result = await postToWorker('load-key');
-      if (!result.ok) {
-        lockError.textContent = 'Encryption key not found. Data may be corrupted.';
-        lockError.style.display = 'block';
-        unlockBtn.disabled = false;
-        unlockBtn.textContent = 'Unlock with Device';
-        return;
+      isPrf = await usePrfFlow();
+      if (isPrf) {
+        const prfData = await loadPrfData();
+        const salt = prfData.salt;
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rpId: webauthnRpId(),
+            userVerification: 'required',
+            extensions: {
+              prf: {
+                eval: { first: salt }
+              }
+            }
+          }
+        });
+        const prfResult = assertion.getClientExtensionResults().prf;
+        if (!prfResult || !prfResult.results || !prfResult.results.first) {
+          throw new Error('PRF not supported by authenticator');
+        }
+        const rawBuffer = prfResult.results.first;
+        await postToWorker('import-key', new Uint8Array(rawBuffer), [rawBuffer]);
+        delete prfResult.results.first;
+      } else {
+        await authenticate();
+        const result = await postToWorker('load-key');
+        if (!result.ok) {
+          lockError.textContent = 'Encryption key not found. Data may be corrupted.';
+          lockError.style.display = 'block';
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = 'Unlock with Device';
+          return;
+        }
       }
     } else {
-      await createCredential();
-      await postToWorker('generate-key');
-      await postToWorker('reencrypt-all');
+      const cred = await createCredentialWithPrf();
+      const credPrf = cred.getClientExtensionResults().prf;
+      if (credPrf && credPrf.enabled) {
+        const salt = crypto.getRandomValues(new Uint8Array(32));
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            rpId: webauthnRpId(),
+            userVerification: 'required',
+            allowCredentials: [{
+              type: 'public-key',
+              id: new Uint8Array(cred.rawId)
+            }],
+            extensions: {
+              prf: {
+                eval: { first: salt }
+              }
+            }
+          }
+        });
+        const prfResult = assertion.getClientExtensionResults().prf;
+        if (!prfResult || !prfResult.results || !prfResult.results.first) {
+          throw new Error('PRF evaluation failed');
+        }
+        const rawBuffer = prfResult.results.first;
+        await postToWorker('import-key', new Uint8Array(rawBuffer), [rawBuffer]);
+        delete prfResult.results.first;
+        const credId = new Uint8Array(cred.rawId);
+        await savePrfData({ salt, credId });
+        await postToWorker('reencrypt-all');
+      } else {
+        await createCredential();
+        await postToWorker('generate-key');
+        await postToWorker('reencrypt-all');
+      }
     }
 
     trackActivity();
@@ -1045,7 +1172,7 @@ async function lockApp() {
   lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
   unlockBtn.textContent = 'Unlock with Device';
   showLockOverlay();
-}
+} 
 
 document.addEventListener('click', handleActivity);
 document.addEventListener('keydown', handleActivity);

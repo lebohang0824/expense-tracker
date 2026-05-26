@@ -2,13 +2,16 @@ let cryptoKey = null;
 
 function getDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('expenditure-db', 3);
+    const request = indexedDB.open('expenditure-db', 4);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
       if (!db.objectStoreNames.contains('_crypto')) {
         db.createObjectStore('_crypto');
+      }
+      if (!db.objectStoreNames.contains('_prf')) {
+        db.createObjectStore('_prf');
       }
     };
   });
@@ -90,6 +93,12 @@ self.onmessage = async (e) => {
   try {
     let result;
     switch (type) {
+      case 'import-key':
+        cryptoKey = await crypto.subtle.importKey(
+          'raw', new Uint8Array(data), { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+        );
+        result = { ok: true };
+        break;
       case 'generate-key':
         cryptoKey = await crypto.subtle.generateKey(
           { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
