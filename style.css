@@ -691,6 +691,20 @@ select.form-input {
   background: #4ade80;
 }
 
+.modal-submit.primary {
+  background: var(--accent-amber);
+  color: #0d0d0f;
+}
+
+.modal-submit.primary:hover {
+  background: #fbbf24;
+}
+
+.modal-submit.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .modal-submit.expense {
   background: var(--danger);
   color: #0d0d0f;
@@ -708,6 +722,56 @@ select.form-input {
   flex-direction: column;
   gap: 12px;
   z-index: 1100;
+}
+
+.lock-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 20px;
+}
+
+.lock-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.lock-overlay .modal {
+  transform: scale(0.95) translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lock-overlay.active .modal {
+  transform: scale(1) translateY(0);
+}
+
+.lock-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.lock-icon svg {
+  width: 40px;
+  height: 40px;
+  color: var(--accent-amber);
+  opacity: 0.8;
+}
+
+.lock-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+  text-align: center;
+  margin-bottom: 12px;
+  display: none;
 }
 
 .toast {

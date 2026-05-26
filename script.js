@@ -1,56 +1,91 @@
 const DB_NAME = 'expenditure-db';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 let db;
+
+if (window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0') {
+  window.location.replace('http://localhost:' + window.location.port);
+}
 
 function initDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-
     request.onerror = () => reject(request.error);
-    
     request.onsuccess = () => {
       db = request.result;
       resolve(db);
     };
-
     request.onupgradeneeded = (event) => {
       const database = event.target.result;
-      
       if (!database.objectStoreNames.contains('incomes')) {
-        const incomeStore = database.createObjectStore('incomes', { keyPath: 'id', autoIncrement: true });
-        incomeStore.createIndex('source', 'source', { unique: false });
-        incomeStore.createIndex('date', 'date', { unique: false });
+        database.createObjectStore('incomes', { keyPath: 'id', autoIncrement: true });
       }
-      
       if (!database.objectStoreNames.contains('expenses')) {
-        const expenseStore = database.createObjectStore('expenses', { keyPath: 'id', autoIncrement: true });
-        expenseStore.createIndex('description', 'description', { unique: false });
-        expenseStore.createIndex('date', 'date', { unique: false });
-        expenseStore.createIndex('category', 'category', { unique: false });
-        expenseStore.createIndex('status', 'status', { unique: false });
+        database.createObjectStore('expenses', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!database.objectStoreNames.contains('_crypto')) {
+        database.createObjectStore('_crypto');
       }
     };
   });
 }
 
-function addItem(storeName, data) {
+function getCryptoStore(mode) {
+  const t = db.transaction('_crypto', mode);
+  return t.objectStore('_crypto');
+}
+
+function storeEncryptionKey(key) {
+  return new Promise((resolve, reject) => {
+    const r = getCryptoStore('readwrite').put(key, 'encryption-key');
+    r.onsuccess = () => resolve();
+    r.onerror = () => reject(r.error);
+  });
+}
+
+function loadEncryptionKey() {
+  return new Promise((resolve, reject) => {
+    const r = getCryptoStore('readonly').get('encryption-key');
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+function deleteEncryptionKey() {
+  return new Promise((resolve, reject) => {
+    const r = getCryptoStore('readwrite').delete('encryption-key');
+    r.onsuccess = () => resolve();
+    r.onerror = () => reject(r.error);
+  });
+}
+
+async function addItem(storeName, data) {
+  const payload = await encryptData(cryptoKey, data);
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readwrite');
     const store = transaction.objectStore(storeName);
-    const request = store.add(data);
+    const request = store.add(payload);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-function getAllItems(storeName) {
-  return new Promise((resolve, reject) => {
+async function getAllItems(storeName) {
+  const items = await new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readonly');
     const store = transaction.objectStore(storeName);
     const request = store.getAll();
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+  if (items.length === 0) return [];
+  if (items[0].iv) {
+    return Promise.all(items.map(async item => {
+      const data = await decryptData(cryptoKey, item);
+      data.id = item.id;
+      return data;
+    }));
+  }
+  return items;
 }
 
 function deleteItem(storeName, id) {
@@ -63,11 +98,13 @@ function deleteItem(storeName, id) {
   });
 }
 
-function updateItem(storeName, data) {
+async function updateItem(storeName, data) {
+  const id = data.id;
+  const payload = { id, ...await encryptData(cryptoKey, data) };
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readwrite');
     const store = transaction.objectStore(storeName);
-    const request = store.put(data);
+    const request = store.put(payload);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -81,6 +118,82 @@ function clearStore(storeName) {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+}
+
+async function encryptData(key, data) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(data));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+  return { iv, data: new Uint8Array(ciphertext) };
+}
+
+async function decryptData(key, payload) {
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: payload.iv }, key, payload.data
+  );
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+function webauthnRpId() {
+  const host = window.location.hostname;
+  if (host === '127.0.0.1' || host === '0.0.0.0') return 'localhost';
+  return host;
+}
+
+function webauthnAvailable() {
+  if (!window.PublicKeyCredential) return { ok: false, reason: 'WebAuthn is not supported in this browser.' };
+  const host = window.location.hostname;
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) && host !== '127.0.0.1') {
+    return { ok: false, reason: 'WebAuthn requires a domain name. Use http://localhost:8080 instead of http://' + host + ':8080.' };
+  }
+  if (host === '127.0.0.1' || host === '0.0.0.0') {
+    return { ok: true, redirect: 'http://localhost:' + window.location.port };
+  }
+  if (window.location.protocol !== 'https:' && host !== 'localhost' && host !== '127.0.0.1') {
+    return { ok: false, reason: 'WebAuthn requires HTTPS or localhost.' };
+  }
+  return { ok: true };
+}
+
+async function createCredential() {
+  return navigator.credentials.create({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'Expenditure', id: webauthnRpId() },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: 'expenditure-user',
+        displayName: 'Expenditure'
+      },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },
+        { type: 'public-key', alg: -257 }
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: 'platform',
+        residentKey: 'required',
+        userVerification: 'required'
+      },
+      timeout: 60000
+    }
+  });
+}
+
+async function authenticate() {
+  return navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId: webauthnRpId(),
+      userVerification: 'required'
+    },
+    mediation: 'required'
+  });
+}
+
+async function generateEncryptionKey() {
+  return crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+  );
 }
 
 const balanceAmountEl = document.getElementById('balanceAmount');
@@ -108,6 +221,11 @@ const deleteMessage = document.getElementById('deleteMessage');
 const settingsModal = document.getElementById('settingsModal');
 const toastContainer = document.getElementById('toastContainer');
 const currentDateEl = document.getElementById('currentDate');
+const lockOverlay = document.getElementById('lockOverlay');
+const lockTitle = document.getElementById('lockTitle');
+const lockSubtitle = document.getElementById('lockSubtitle');
+const lockError = document.getElementById('lockError');
+const unlockBtn = document.getElementById('unlockBtn');
 
 let editingExpenseId = null;
 
@@ -147,9 +265,7 @@ function showToast(message, type = 'success') {
     <span>${message}</span>
   `;
   toastContainer.appendChild(toast);
-  
   setTimeout(() => toast.classList.add('show'), 10);
-  
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 400);
@@ -216,7 +332,6 @@ async function updateUI() {
 
   const circumference = 2 * Math.PI * 34;
   let healthPercent = 0;
-  
   if (totalIncome > 0 && balance > 0) {
     healthPercent = Math.min(100, Math.round((balance / totalIncome) * 100));
   } else if (balance <= 0) {
@@ -262,9 +377,9 @@ async function updateUI() {
     expenseListEl.innerHTML = '<div class="empty">No expenses recorded</div>';
   } else {
     const sortedExpenses = [...expenses].sort((a, b) => {
-const priority = { missed: 0, 'pending-soon': 1, 'pending-far': 2, paid: 3 };
-return priority[getStatusInfo(a).cls] - priority[getStatusInfo(b).cls];
-});
+      const priority = { missed: 0, 'pending-soon': 1, 'pending-far': 2, paid: 3 };
+      return priority[getStatusInfo(a).cls] - priority[getStatusInfo(b).cls];
+    });
     expenseListEl.innerHTML = sortedExpenses.map(exp => {
       const status = getStatusInfo(exp);
       const itemCls = showCriticalBorder ? (status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '') : '';
@@ -349,6 +464,13 @@ function closeModal(modal) {
   }
 }
 
+function showLockOverlay() {
+  lockError.style.display = 'none';
+  lockError.textContent = '';
+  unlockBtn.disabled = false;
+  lockOverlay.classList.add('active');
+}
+
 const optionsBtn = document.getElementById('optionsBtn');
 const optionsDropdown = document.getElementById('optionsDropdown');
 
@@ -417,6 +539,7 @@ let pendingConfirm = null;
 let incomesCache = [];
 let expensesCache = [];
 let balanceViewMode = 'balance';
+let cryptoKey = null;
 
 document.getElementById('exportBtn').addEventListener('click', () => {
   optionsDropdown.classList.remove('active');
@@ -434,6 +557,18 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
   optionsDropdown.classList.remove('active');
   document.getElementById('criticalBorderToggle').checked = showCriticalBorder;
   openModal(settingsModal);
+});
+
+document.getElementById('lockAppBtn').addEventListener('click', () => {
+  optionsDropdown.classList.remove('active');
+  cryptoKey = null;
+  incomesCache = [];
+  expensesCache = [];
+  balanceViewMode = 'balance';
+  lockTitle.textContent = 'Unlock Expenditure';
+  lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
+  unlockBtn.textContent = 'Unlock with Device';
+  showLockOverlay();
 });
 
 importForm.addEventListener('submit', async (e) => {
@@ -480,9 +615,7 @@ importForm.addEventListener('submit', async (e) => {
     const type = parseVal(typeIdx, row).toLowerCase();
     const amount = parseFloat(parseVal(amountIdx, row));
     const date = parseVal(dateIdx, row);
-
     if (isNaN(amount) || !date) continue;
-
     if (type === 'income') {
       incomes.push({ source: parseVal(sourceIdx, row) || 'Imported', amount, date });
     } else if (type === 'expense') {
@@ -493,13 +626,8 @@ importForm.addEventListener('submit', async (e) => {
 
   await clearStore('incomes');
   await clearStore('expenses');
-
-  for (const inc of incomes) {
-    await addItem('incomes', inc);
-  }
-  for (const exp of expenses) {
-    await addItem('expenses', exp);
-  }
+  for (const inc of incomes) await addItem('incomes', inc);
+  for (const exp of expenses) await addItem('expenses', exp);
 
   closeModal(importModal);
   importForm.reset();
@@ -541,6 +669,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', () => {
   pendingConfirm = async () => {
     await clearStore('incomes');
     await clearStore('expenses');
+    await deleteEncryptionKey();
     showToast('All data cleared');
     updateUI();
   };
@@ -627,12 +756,7 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 incomeForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const formData = new FormData(incomeForm);
-  const data = {
-    source: formData.get('source'),
-    amount: parseFloat(formData.get('amount')),
-    date: formData.get('date')
-  };
-  
+  const data = { source: formData.get('source'), amount: parseFloat(formData.get('amount')), date: formData.get('date') };
   await addItem('incomes', data);
   closeModal(incomeModal);
   incomeForm.reset();
@@ -650,7 +774,6 @@ expenseForm.addEventListener('submit', async (e) => {
     date: formData.get('date'),
     status: formData.get('status') || 'pending'
   };
-
   if (editingExpenseId) {
     data.id = editingExpenseId;
     await updateItem('expenses', data);
@@ -659,7 +782,6 @@ expenseForm.addEventListener('submit', async (e) => {
     await addItem('expenses', data);
     showToast('Expense recorded');
   }
-
   closeModal(expenseModal);
   expenseForm.reset();
   editingExpenseId = null;
@@ -671,6 +793,104 @@ expenseForm.addEventListener('submit', async (e) => {
 incomeForm.date.valueAsDate = today;
 expenseForm.date.valueAsDate = today;
 
-initDB().then(() => {
-  updateUI();
+unlockBtn.addEventListener('click', async () => {
+  lockError.style.display = 'none';
+  unlockBtn.disabled = true;
+  unlockBtn.textContent = 'Authenticating...';
+  let hasKey;
+
+  try {
+    const wa = webauthnAvailable();
+    if (!wa.ok) {
+      lockError.textContent = wa.reason;
+      lockError.style.display = 'block';
+      unlockBtn.disabled = false;
+      unlockBtn.textContent = 'Unlock with Device';
+      return;
+    }
+    if (wa.redirect) {
+      window.location.href = wa.redirect;
+      return;
+    }
+
+    hasKey = !!(await loadEncryptionKey());
+
+    if (hasKey) {
+      await authenticate();
+      cryptoKey = await loadEncryptionKey();
+      if (!cryptoKey) {
+        lockError.textContent = 'Encryption key not found. Data may be corrupted.';
+        lockError.style.display = 'block';
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = 'Unlock with Device';
+        return;
+      }
+    } else {
+      await createCredential();
+      cryptoKey = await generateEncryptionKey();
+      await storeEncryptionKey(cryptoKey);
+      for (const store of ['incomes', 'expenses']) {
+        const items = await new Promise((resolve, reject) => {
+          const t = db.transaction(store, 'readonly');
+          const s = t.objectStore(store);
+          const r = s.getAll();
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+        });
+        if (items.length > 0 && !items[0].iv) {
+          for (const item of items) {
+            const id = item.id;
+            delete item.id;
+            const payload = { id, ...await encryptData(cryptoKey, item) };
+            await new Promise((resolve, reject) => {
+              const t = db.transaction(store, 'readwrite');
+              const s = t.objectStore(store);
+              const r = s.put(payload);
+              r.onsuccess = () => resolve();
+              r.onerror = () => reject(r.error);
+            });
+          }
+        }
+      }
+    }
+
+    lockOverlay.classList.remove('active');
+    updateUI();
+  } catch (err) {
+    if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+      unlockBtn.textContent = hasKey ? 'Unlock with Device' : 'Set Up';
+    } else {
+      lockError.textContent = err.message || 'Unlock failed. Please try again.';
+      lockError.style.display = 'block';
+      unlockBtn.textContent = hasKey ? 'Unlock with Device' : 'Set Up';
+    }
+    unlockBtn.disabled = false;
+  }
+});
+
+initDB().then(async () => {
+  const wa = webauthnAvailable();
+  if (wa.redirect) {
+    window.location.href = wa.redirect;
+    return;
+  }
+  if (!wa.ok) {
+    lockTitle.textContent = 'Unlock Unavailable';
+    lockSubtitle.textContent = wa.reason;
+    unlockBtn.style.display = 'none';
+    showLockOverlay();
+    return;
+  }
+
+  const hasKey = !!(await loadEncryptionKey());
+  if (hasKey) {
+    lockTitle.textContent = 'Unlock Expenditure';
+    lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
+    unlockBtn.textContent = 'Unlock with Device';
+  } else {
+    lockTitle.textContent = 'Set Up Device Unlock';
+    lockSubtitle.textContent = 'Secure your data with your device\u2019s biometrics or PIN.';
+    unlockBtn.textContent = 'Set Up';
+  }
+  showLockOverlay();
 });
