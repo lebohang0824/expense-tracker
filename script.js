@@ -1,6 +1,9 @@
 const DB_NAME = 'expenditure-db';
 const DB_VERSION = 3;
 let db;
+const LOCK_TIMEOUT = 30 * 60 * 1000;
+let lastActivity = Date.now();
+let autoLockInterval = null;
 
 if (window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0') {
   window.location.replace('http://localhost:' + window.location.port);
@@ -29,37 +32,94 @@ function initDB() {
   });
 }
 
-function getCryptoStore(mode) {
-  const t = db.transaction('_crypto', mode);
-  return t.objectStore('_crypto');
-}
-
-function storeEncryptionKey(key) {
-  return new Promise((resolve, reject) => {
-    const r = getCryptoStore('readwrite').put(key, 'encryption-key');
-    r.onsuccess = () => resolve();
-    r.onerror = () => reject(r.error);
-  });
-}
-
-function loadEncryptionKey() {
-  return new Promise((resolve, reject) => {
-    const r = getCryptoStore('readonly').get('encryption-key');
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-  });
-}
-
 function deleteEncryptionKey() {
   return new Promise((resolve, reject) => {
-    const r = getCryptoStore('readwrite').delete('encryption-key');
+    const t = db.transaction('_crypto', 'readwrite');
+    const r = t.objectStore('_crypto').delete('encryption-key');
     r.onsuccess = () => resolve();
     r.onerror = () => reject(r.error);
   });
+}
+
+let worker = null;
+let msgId = 0;
+const pendingRequests = new Map();
+
+function initWorker() {
+  try {
+    worker = new Worker('crypto-worker.js');
+    worker.onmessage = (e) => {
+      const { id, ok, result, error } = e.data;
+      const pending = pendingRequests.get(id);
+      if (pending) {
+        pendingRequests.delete(id);
+        if (ok) pending.resolve(result);
+        else pending.reject(new Error(error || 'Worker error'));
+      }
+    };
+    worker.onerror = (err) => {
+      console.error('Crypto worker error:', err);
+      scheduleWorkerRestart();
+    };
+  } catch (err) {
+    console.error('Failed to create crypto worker:', err);
+  }
+}
+
+let workerRestartTimer = null;
+let workerRestartCount = 0;
+const MAX_WORKER_RESTARTS = 3;
+
+function scheduleWorkerRestart() {
+  if (workerRestartTimer) return;
+  if (workerRestartCount >= MAX_WORKER_RESTARTS) {
+    console.error('Crypto worker failed to start after', MAX_WORKER_RESTARTS, 'attempts');
+    return;
+  }
+  workerRestartCount++;
+  workerRestartTimer = setTimeout(() => {
+    workerRestartTimer = null;
+    terminateWorker();
+    initWorker();
+  }, 2000);
+}
+
+function terminateWorker() {
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+  for (const [id, pending] of pendingRequests) {
+    pending.reject(new Error('Worker terminated'));
+    pendingRequests.delete(id);
+  }
+}
+
+function postToWorker(type, data) {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      reject(new Error('Worker not available'));
+      return;
+    }
+    const id = ++msgId;
+    pendingRequests.set(id, { resolve, reject });
+    worker.postMessage({ id, type, data });
+    setTimeout(() => {
+      if (pendingRequests.has(id)) {
+        pendingRequests.delete(id);
+        reject(new Error('Worker request timed out'));
+      }
+    }, 10000);
+  });
+}
+
+async function hasEncryptionKey() {
+  const result = await postToWorker('has-key');
+  return result.ok;
 }
 
 async function addItem(storeName, data) {
-  const payload = await encryptData(cryptoKey, data);
+  const payload = await postToWorker('encrypt', data);
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readwrite');
     const store = transaction.objectStore(storeName);
@@ -80,7 +140,7 @@ async function getAllItems(storeName) {
   if (items.length === 0) return [];
   if (items[0].iv) {
     return Promise.all(items.map(async item => {
-      const data = await decryptData(cryptoKey, item);
+      const data = await postToWorker('decrypt', { iv: new Uint8Array(item.iv), data: new Uint8Array(item.data) });
       data.id = item.id;
       return data;
     }));
@@ -100,7 +160,9 @@ function deleteItem(storeName, id) {
 
 async function updateItem(storeName, data) {
   const id = data.id;
-  const payload = { id, ...await encryptData(cryptoKey, data) };
+  const clear = { ...data };
+  delete clear.id;
+  const payload = { id, ...await postToWorker('encrypt', clear) };
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readwrite');
     const store = transaction.objectStore(storeName);
@@ -118,20 +180,6 @@ function clearStore(storeName) {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
-}
-
-async function encryptData(key, data) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(JSON.stringify(data));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
-  return { iv, data: new Uint8Array(ciphertext) };
-}
-
-async function decryptData(key, payload) {
-  const plain = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: payload.iv }, key, payload.data
-  );
-  return JSON.parse(new TextDecoder().decode(plain));
 }
 
 function webauthnRpId() {
@@ -188,12 +236,6 @@ async function authenticate() {
     },
     mediation: 'required'
   });
-}
-
-async function generateEncryptionKey() {
-  return crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-  );
 }
 
 const balanceAmountEl = document.getElementById('balanceAmount');
@@ -257,20 +299,155 @@ function getStatusInfo(exp) {
   return { label: 'Pending', cls: 'pending-far' };
 }
 
+function sanitizeInput(str) {
+  return String(str).replace(/[<>&"']/g, function (m) {
+    switch (m) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '"': return '&quot;';
+      case "'": return '&#x27;';
+      default: return m;
+    }
+  });
+}
+
+function sanitizeObject(obj) {
+  const out = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      out[key] = typeof obj[key] === 'string' ? sanitizeInput(obj[key]) : obj[key];
+    }
+  }
+  return out;
+}
+
 function showToast(message, type = 'success') {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `
-    <span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span>
-    <span>${message}</span>
-  `;
+
+  const icon = document.createElement('span');
+  icon.className = 'toast-icon';
+  icon.textContent = type === 'success' ? '\u2713' : '\u2715';
+
+  const text = document.createElement('span');
+  text.textContent = message;
+
+  toast.appendChild(icon);
+  toast.appendChild(text);
   toastContainer.appendChild(toast);
-  setTimeout(() => toast.classList.add('show'), 10);
+
+  requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 400);
   }, 3000);
 }
+
+function createIncomeItem(inc) {
+  const item = document.createElement('div');
+  item.className = 'item';
+
+  const info = document.createElement('div');
+  info.className = 'item-info';
+
+  const name = document.createElement('div');
+  name.className = 'item-name';
+  name.textContent = inc.source;
+
+  const date = document.createElement('div');
+  date.className = 'item-date';
+  date.textContent = formatDate(inc.date);
+
+  info.appendChild(name);
+  info.appendChild(date);
+
+  const amount = document.createElement('div');
+  amount.className = 'item-amount income';
+
+  const amtSpan = document.createElement('span');
+  amtSpan.textContent = formatCurrency(inc.amount);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'delete-btn';
+  delBtn.dataset.deleteIncome = inc.id;
+  delBtn.title = 'Delete';
+  delBtn.textContent = '\u2715';
+
+  amount.appendChild(amtSpan);
+  amount.appendChild(delBtn);
+
+  item.appendChild(info);
+  item.appendChild(amount);
+
+  return item;
+}
+
+function createExpenseItem(exp) {
+  const status = getStatusInfo(exp);
+  const itemCls = showCriticalBorder ? (status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '') : '';
+
+  const item = document.createElement('div');
+  item.className = 'item' + (itemCls ? ' ' + itemCls : '');
+
+  const info = document.createElement('div');
+  info.className = 'item-info';
+
+  const name = document.createElement('div');
+  name.className = 'item-name';
+  name.textContent = exp.description;
+
+  const date = document.createElement('div');
+  date.className = 'item-date';
+  date.textContent = formatDate(exp.date);
+
+  info.appendChild(name);
+  info.appendChild(date);
+
+  const amount = document.createElement('div');
+  amount.className = 'item-amount expense';
+
+  if (showExpenseCategory) {
+    const catTag = document.createElement('span');
+    catTag.className = 'category-tag';
+    catTag.textContent = exp.category;
+    amount.appendChild(catTag);
+  } else {
+    const statusTag = document.createElement('span');
+    statusTag.className = 'status-tag ' + status.cls;
+    statusTag.textContent = status.label;
+    amount.appendChild(statusTag);
+  }
+
+  const amtToggle = document.createElement('span');
+  amtToggle.className = 'amount-toggle';
+  amtToggle.textContent = showExpensePercent
+    ? (totalExpenseForPct > 0 ? Math.round((exp.amount / totalExpenseForPct) * 100) + '%' : '0%')
+    : formatCurrency(exp.amount);
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'delete-btn';
+  editBtn.dataset.editExpense = exp.id;
+  editBtn.title = 'Edit';
+  editBtn.textContent = '\u270E';
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'delete-btn';
+  delBtn.dataset.deleteExpense = exp.id;
+  delBtn.title = 'Delete';
+  delBtn.textContent = '\u2715';
+
+  amount.appendChild(amtToggle);
+  amount.appendChild(editBtn);
+  amount.appendChild(delBtn);
+
+  item.appendChild(info);
+  item.appendChild(amount);
+
+  return item;
+}
+
+let totalExpenseForPct = 0;
 
 async function updateUI() {
   const incomes = await getAllItems('incomes');
@@ -338,7 +515,7 @@ async function updateUI() {
     healthPercent = 0;
   }
 
-  healthPercentEl.textContent = `${healthPercent}%`;
+  healthPercentEl.textContent = healthPercent + '%';
   const offset = circumference - (healthPercent / 100) * circumference;
   healthProgressEl.style.strokeDasharray = circumference;
   healthProgressEl.style.strokeDashoffset = offset;
@@ -356,56 +533,39 @@ async function updateUI() {
     healthStatusEl.textContent = totalIncome === 0 ? 'Add income to get started' : 'Expenses exceed income';
   }
 
+  incomeListEl.textContent = '';
   if (incomes.length === 0) {
-    incomeListEl.innerHTML = '<div class="empty">No incomes added yet</div>';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No incomes added yet';
+    incomeListEl.appendChild(empty);
   } else {
-    incomeListEl.innerHTML = incomes.map(inc => `
-      <div class="item">
-        <div class="item-info">
-          <div class="item-name">${inc.source}</div>
-          <div class="item-date">${formatDate(inc.date)}</div>
-        </div>
-        <div class="item-amount income">
-          <span>${formatCurrency(inc.amount)}</span>
-          <button class="delete-btn" data-delete-income="${inc.id}" title="Delete">✕</button>
-        </div>
-      </div>
-    `).join('');
+    for (const inc of incomes) {
+      incomeListEl.appendChild(createIncomeItem(inc));
+    }
   }
 
+  expenseListEl.textContent = '';
   if (expenses.length === 0) {
-    expenseListEl.innerHTML = '<div class="empty">No expenses recorded</div>';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No expenses recorded';
+    expenseListEl.appendChild(empty);
   } else {
     const sortedExpenses = [...expenses].sort((a, b) => {
       const priority = { missed: 0, 'pending-soon': 1, 'pending-far': 2, paid: 3 };
       return priority[getStatusInfo(a).cls] - priority[getStatusInfo(b).cls];
     });
-    expenseListEl.innerHTML = sortedExpenses.map(exp => {
-      const status = getStatusInfo(exp);
-      const itemCls = showCriticalBorder ? (status.cls === 'pending-soon' ? 'warning' : status.cls === 'missed' ? 'critical' : '') : '';
-      return `
-      <div class="item${itemCls ? ' ' + itemCls : ''}">
-        <div class="item-info">
-          <div class="item-name">${exp.description}</div>
-          <div class="item-date">${formatDate(exp.date)}</div>
-        </div>
-        <div class="item-amount expense">
-          ${showExpenseCategory
-            ? `<span class="category-tag">${exp.category}</span>`
-            : `<span class="status-tag ${status.cls}">${status.label}</span>`
-          }
-          <span class="amount-toggle">${showExpensePercent ? (totalExpense > 0 ? Math.round((exp.amount / totalExpense) * 100) + '%' : '0%') : formatCurrency(exp.amount)}</span>
-          <button class="delete-btn" data-edit-expense="${exp.id}" title="Edit">✎</button>
-          <button class="delete-btn" data-delete-expense="${exp.id}" title="Delete">✕</button>
-        </div>
-      </div>`
-    }).join('');
+    totalExpenseForPct = totalExpense;
+    for (const exp of sortedExpenses) {
+      expenseListEl.appendChild(createExpenseItem(exp));
+    }
   }
 
-  expenseCountEl.textContent = `(${expenses.length})`;
-  pendingStatEl.textContent = `Pending (${pendingExpenses.length})`;
-  paidStatEl.textContent = `Paid (${paidExpenses.length})`;
-  missedStatEl.textContent = `Missed (${missedExpenses.length})`;
+  expenseCountEl.textContent = '(' + expenses.length + ')';
+  pendingStatEl.textContent = 'Pending (' + pendingExpenses.length + ')';
+  paidStatEl.textContent = 'Paid (' + paidExpenses.length + ')';
+  missedStatEl.textContent = 'Missed (' + missedExpenses.length + ')';
   pendingStatEl.classList.toggle('active', balanceViewMode === 'pending');
   paidStatEl.classList.toggle('active', balanceViewMode === 'paid');
   missedStatEl.classList.toggle('active', balanceViewMode === 'missed');
@@ -524,7 +684,7 @@ function downloadCsv(csv) {
   a.href = url;
   const d = new Date();
   const ts = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '-' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
-  a.download = `expenditure-export-${ts}.csv`;
+  a.download = 'expenditure-export-' + ts + '.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -539,7 +699,6 @@ let pendingConfirm = null;
 let incomesCache = [];
 let expensesCache = [];
 let balanceViewMode = 'balance';
-let cryptoKey = null;
 
 document.getElementById('exportBtn').addEventListener('click', () => {
   optionsDropdown.classList.remove('active');
@@ -561,7 +720,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
 
 document.getElementById('lockAppBtn').addEventListener('click', () => {
   optionsDropdown.classList.remove('active');
-  cryptoKey = null;
+  postToWorker('clear-key').catch(() => {});
   incomesCache = [];
   expensesCache = [];
   balanceViewMode = 'balance';
@@ -617,10 +776,10 @@ importForm.addEventListener('submit', async (e) => {
     const date = parseVal(dateIdx, row);
     if (isNaN(amount) || !date) continue;
     if (type === 'income') {
-      incomes.push({ source: parseVal(sourceIdx, row) || 'Imported', amount, date });
+      incomes.push(sanitizeObject({ source: parseVal(sourceIdx, row) || 'Imported', amount, date }));
     } else if (type === 'expense') {
       const status = parseVal(statusIdx, row) || 'pending';
-      expenses.push({ description: parseVal(descIdx, row) || 'Imported', amount, category: parseVal(catIdx, row) || 'Other', date, status });
+      expenses.push(sanitizeObject({ description: parseVal(descIdx, row) || 'Imported', amount, category: parseVal(catIdx, row) || 'Other', date, status }));
     }
   }
 
@@ -631,7 +790,7 @@ importForm.addEventListener('submit', async (e) => {
 
   closeModal(importModal);
   importForm.reset();
-  showToast(`Imported ${incomes.length} incomes and ${expenses.length} expenses`);
+  showToast('Imported ' + incomes.length + ' incomes and ' + expenses.length + ' expenses');
   updateUI();
 });
 
@@ -648,7 +807,7 @@ document.getElementById('deleteConfirm').addEventListener('click', async () => {
   const label = pendingDelete.label;
   pendingDelete = null;
   closeModal(deleteModal);
-  showToast(`${label.charAt(0).toUpperCase() + label.slice(1)} deleted`);
+  showToast(label.charAt(0).toUpperCase() + label.slice(1) + ' deleted');
   updateUI();
 });
 
@@ -670,6 +829,7 @@ document.getElementById('clearStorageBtn').addEventListener('click', () => {
     await clearStore('incomes');
     await clearStore('expenses');
     await deleteEncryptionKey();
+    await postToWorker('delete-key').catch(() => {});
     showToast('All data cleared');
     updateUI();
   };
@@ -756,7 +916,11 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 incomeForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const formData = new FormData(incomeForm);
-  const data = { source: formData.get('source'), amount: parseFloat(formData.get('amount')), date: formData.get('date') };
+  const data = sanitizeObject({
+    source: formData.get('source'),
+    amount: parseFloat(formData.get('amount')),
+    date: formData.get('date')
+  });
   await addItem('incomes', data);
   closeModal(incomeModal);
   incomeForm.reset();
@@ -767,13 +931,13 @@ incomeForm.addEventListener('submit', async (e) => {
 expenseForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const formData = new FormData(expenseForm);
-  const data = {
+  const data = sanitizeObject({
     description: formData.get('description'),
     amount: parseFloat(formData.get('amount')),
     category: formData.get('category'),
     date: formData.get('date'),
     status: formData.get('status') || 'pending'
-  };
+  });
   if (editingExpenseId) {
     data.id = editingExpenseId;
     await updateItem('expenses', data);
@@ -813,12 +977,12 @@ unlockBtn.addEventListener('click', async () => {
       return;
     }
 
-    hasKey = !!(await loadEncryptionKey());
+    hasKey = await hasEncryptionKey();
 
     if (hasKey) {
       await authenticate();
-      cryptoKey = await loadEncryptionKey();
-      if (!cryptoKey) {
+      const result = await postToWorker('load-key');
+      if (!result.ok) {
         lockError.textContent = 'Encryption key not found. Data may be corrupted.';
         lockError.style.display = 'block';
         unlockBtn.disabled = false;
@@ -827,33 +991,12 @@ unlockBtn.addEventListener('click', async () => {
       }
     } else {
       await createCredential();
-      cryptoKey = await generateEncryptionKey();
-      await storeEncryptionKey(cryptoKey);
-      for (const store of ['incomes', 'expenses']) {
-        const items = await new Promise((resolve, reject) => {
-          const t = db.transaction(store, 'readonly');
-          const s = t.objectStore(store);
-          const r = s.getAll();
-          r.onsuccess = () => resolve(r.result);
-          r.onerror = () => reject(r.error);
-        });
-        if (items.length > 0 && !items[0].iv) {
-          for (const item of items) {
-            const id = item.id;
-            delete item.id;
-            const payload = { id, ...await encryptData(cryptoKey, item) };
-            await new Promise((resolve, reject) => {
-              const t = db.transaction(store, 'readwrite');
-              const s = t.objectStore(store);
-              const r = s.put(payload);
-              r.onsuccess = () => resolve();
-              r.onerror = () => reject(r.error);
-            });
-          }
-        }
-      }
+      await postToWorker('generate-key');
+      await postToWorker('reencrypt-all');
     }
 
+    trackActivity();
+    startAutoLockTimer();
     lockOverlay.classList.remove('active');
     updateUI();
   } catch (err) {
@@ -868,7 +1011,207 @@ unlockBtn.addEventListener('click', async () => {
   }
 });
 
+function trackActivity() {
+  lastActivity = Date.now();
+}
+
+function handleActivity() {
+  lastActivity = Date.now();
+}
+
+function startAutoLockTimer() {
+  if (autoLockInterval) clearInterval(autoLockInterval);
+  autoLockInterval = setInterval(() => {
+    if (Date.now() - lastActivity > LOCK_TIMEOUT) {
+      lockApp();
+    }
+  }, 60000);
+}
+
+function stopAutoLockTimer() {
+  if (autoLockInterval) {
+    clearInterval(autoLockInterval);
+    autoLockInterval = null;
+  }
+}
+
+async function lockApp() {
+  stopAutoLockTimer();
+  await postToWorker('clear-key').catch(() => {});
+  incomesCache = [];
+  expensesCache = [];
+  balanceViewMode = 'balance';
+  lockTitle.textContent = 'Unlock Expenditure';
+  lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
+  unlockBtn.textContent = 'Unlock with Device';
+  showLockOverlay();
+}
+
+document.addEventListener('click', handleActivity);
+document.addEventListener('keydown', handleActivity);
+document.addEventListener('scroll', handleActivity);
+document.addEventListener('touchstart', handleActivity);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    lastActivity = Date.now();
+  } else {
+    if (Date.now() - lastActivity > LOCK_TIMEOUT) {
+      lockApp();
+    }
+  }
+});
+
+window.addEventListener('beforeunload', () => {
+  postToWorker('clear-key').catch(() => {});
+  stopAutoLockTimer();
+});
+
+function detectExtensions() {
+  const detected = [];
+
+  try {
+    const nativeMap = Function.prototype.toString.call(Array.prototype.map);
+    if (!nativeMap.includes('[native code]')) {
+      detected.push('prototype modification detected');
+    }
+  } catch (e) {
+    detected.push('prototype tampering detected');
+  }
+
+  try {
+    const iframes = document.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      const src = iframe.src || '';
+      if (src.startsWith('chrome-extension:') || src.startsWith('moz-extension:') || src.startsWith('safari-extension:')) {
+        detected.push('extension iframe: ' + src.split('/')[2]);
+      }
+    }
+  } catch (e) {
+  }
+
+  try {
+    const allEls = document.querySelectorAll('*');
+    for (const el of allEls) {
+      if (el.getAttribute && el.getAttribute('data-extension-id')) {
+        detected.push('extension element detected');
+        break;
+      }
+    }
+  } catch (e) {
+  }
+
+  try {
+    if (window.chrome && window.chrome.runtime && window.chrome.runtime.id) {
+      detected.push('Chrome extension runtime: ' + window.chrome.runtime.id);
+    }
+  } catch (e) {
+  }
+
+  return detected;
+}
+
+function showExtensionWarning(extensions) {
+  const existing = document.getElementById('extensionWarning');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'extensionWarning';
+  banner.className = 'extension-warning';
+
+  const text = document.createElement('span');
+  text.textContent = 'Warning: ' + extensions.length + ' browser extension' + (extensions.length > 1 ? 's' : '') + ' detected. Extensions can read your encrypted data. For financial privacy, use a browser profile without extensions.';
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.className = 'extension-warning-dismiss';
+  dismissBtn.textContent = '\u2715';
+  dismissBtn.setAttribute('aria-label', 'Dismiss warning');
+
+  banner.appendChild(text);
+  banner.appendChild(dismissBtn);
+
+  const lockModal = lockOverlay.querySelector('.modal');
+  if (lockModal) {
+    lockModal.parentNode.insertBefore(banner, lockModal);
+  }
+
+  dismissBtn.addEventListener('click', () => {
+    banner.remove();
+    try {
+      localStorage.setItem('extWarningDismissed', 'true');
+    } catch (e) {
+    }
+  });
+}
+
+function checkExtensions() {
+  try {
+    const dismissed = localStorage.getItem('extWarningDismissed') === 'true';
+    if (dismissed) return;
+
+    const extensions = detectExtensions();
+    if (extensions.length > 0) {
+      showExtensionWarning(extensions);
+      console.log('Extension detection results:', extensions);
+    }
+  } catch (e) {
+    console.error('Extension detection error:', e);
+  }
+}
+
+function blockNetworkExfiltration() {
+  const origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : '');
+    let requestUrl;
+    try {
+      requestUrl = new URL(url, window.location.href);
+    } catch (e) {
+      return origFetch.apply(this, arguments);
+    }
+    const host = requestUrl.hostname;
+    if (host === window.location.hostname || host === 'localhost' || host === '127.0.0.1') {
+      return origFetch.apply(this, arguments);
+    }
+    if (requestUrl.protocol === 'blob:' || requestUrl.protocol === 'data:') {
+      return origFetch.apply(this, arguments);
+    }
+    return Promise.reject(new TypeError('Blocked by security policy: ' + url));
+  };
+
+  const OrigXHR = window.XMLHttpRequest;
+  function SecureXHR() {
+    const xhr = new OrigXHR();
+    const origOpen = xhr.open.bind(xhr);
+    xhr.open = function (method, url, async, user, password) {
+      let requestUrl;
+      try {
+        requestUrl = new URL(url, window.location.href);
+      } catch (e) {
+        origOpen(method, url, async !== false, user, password);
+        return;
+      }
+      const host = requestUrl.hostname;
+      if (host === window.location.hostname || host === 'localhost' || host === '127.0.0.1') {
+        origOpen(method, url, async !== false, user, password);
+        return;
+      }
+      if (requestUrl.protocol === 'blob:' || requestUrl.protocol === 'data:') {
+        origOpen(method, url, async !== false, user, password);
+        return;
+      }
+      throw new TypeError('Blocked by security policy: ' + url);
+    };
+    return xhr;
+  }
+  SecureXHR.prototype = OrigXHR.prototype;
+  window.XMLHttpRequest = SecureXHR;
+}
+
 initDB().then(async () => {
+  initWorker();
+  blockNetworkExfiltration();
+
   const wa = webauthnAvailable();
   if (wa.redirect) {
     window.location.href = wa.redirect;
@@ -882,15 +1225,22 @@ initDB().then(async () => {
     return;
   }
 
-  const hasKey = !!(await loadEncryptionKey());
-  if (hasKey) {
-    lockTitle.textContent = 'Unlock Expenditure';
-    lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
-    unlockBtn.textContent = 'Unlock with Device';
-  } else {
-    lockTitle.textContent = 'Set Up Device Unlock';
-    lockSubtitle.textContent = 'Secure your data with your device\u2019s biometrics or PIN.';
-    unlockBtn.textContent = 'Set Up';
+  try {
+    const hasKey = await hasEncryptionKey();
+    if (hasKey) {
+      lockTitle.textContent = 'Unlock Expenditure';
+      lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
+      unlockBtn.textContent = 'Unlock with Device';
+    } else {
+      lockTitle.textContent = 'Set Up Device Unlock';
+      lockSubtitle.textContent = 'Secure your data with your device\u2019s biometrics or PIN.';
+      unlockBtn.textContent = 'Set Up';
+    }
+  } catch (e) {
+    lockTitle.textContent = 'Unlock Unavailable';
+    lockSubtitle.textContent = 'Security module failed to load. Please refresh the page.';
+    unlockBtn.style.display = 'none';
   }
   showLockOverlay();
+  checkExtensions();
 });
