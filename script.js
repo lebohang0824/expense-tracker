@@ -674,6 +674,25 @@ async function updateUI() {
   });
 }
 
+function clearUI() {
+  incomeListEl.textContent = '';
+  expenseListEl.textContent = '';
+  balanceAmountEl.textContent = 'R0';
+  balanceAmountEl.className = 'balance-amount zero';
+  balanceLabelText.textContent = 'Available Balance';
+  balanceSubtitleEl.textContent = '';
+  balanceSubtitleEl.title = '';
+  totalIncomeEl.textContent = 'R0';
+  totalExpensesEl.textContent = 'R0';
+  totalExpensesEl.style.color = 'var(--danger)';
+  healthPercentEl.textContent = '0%';
+  healthStatusEl.textContent = 'Add income to get started';
+  expenseCountEl.textContent = '';
+  pendingStatEl.textContent = 'Pending (0)';
+  paidStatEl.textContent = 'Paid (0)';
+  missedStatEl.textContent = 'Missed (0)';
+}
+
 function openModal(modal) {
   modal.classList.add('active');
 }
@@ -792,6 +811,7 @@ document.getElementById('lockAppBtn').addEventListener('click', () => {
   incomesCache = [];
   expensesCache = [];
   balanceViewMode = 'balance';
+  clearUI();
   lockTitle.textContent = 'Unlock Expenditure';
   lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
   unlockBtn.textContent = 'Unlock with Device';
@@ -1168,6 +1188,7 @@ async function lockApp() {
   incomesCache = [];
   expensesCache = [];
   balanceViewMode = 'balance';
+  clearUI();
   lockTitle.textContent = 'Unlock Expenditure';
   lockSubtitle.textContent = 'Use your device biometrics or PIN to unlock your data.';
   unlockBtn.textContent = 'Unlock with Device';
